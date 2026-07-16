@@ -33,10 +33,23 @@ and its test is always-on.
   `$OrphanFiles`(512). `istat 4`: size 116, mode 0644, direct block 57;
   `icat 4 | sha256 =
   02a2a6af2f1ecf4720d7d49d640f0d0a269a7ec733e41973bdd34f09dad0e252`.
-- **Used by:** the P0 superblock/cylinder-group tests (env var
-  `UFS2_DFVFS_ORACLE` points at the image; the test skips cleanly when absent,
-  like an oracle binary). Later phases (P1 inode / P2 dir / P3 content) reuse the
-  same image and the TSK ground truth above.
+- **Used by:** the env-gated full-image oracle test (`core/tests/
+  superblock_oracle.rs`; env var `UFS2_DFVFS_ORACLE` points at this image; the
+  test skips cleanly when absent, like an oracle binary). Later phases (P1 inode
+  / P2 dir / P3 content) reuse the same image and the TSK ground truth above.
+
+### Committed always-on fixtures (extracted from `ufs2.raw`)
+
+Two small slices of the image above, committed so `core/tests/fixture.rs` runs
+in a plain `cargo test` (no env var). Re-extract with:
+`python3 -c "d=open('ufs2.raw','rb').read();
+open('ufs2_superblock.bin','wb').write(d[73728:73728+1376]);
+open('ufs2_cg0.bin','wb').write(d[139264:139264+256])"`.
+
+- **`ufs2_superblock.bin`** — the 1376-byte primary UFS2 superblock (image byte
+  73728). md5 `6323c77a514e2e82c620dd4138259fbd`.
+- **`ufs2_cg0.bin`** — the 256-byte first cylinder-group header (image byte
+  139264). md5 `84f832db7344638fbd7319b1b66e15c4`.
 
 ## UFS1 — deferred to a real image (NOT yet committed)
 
