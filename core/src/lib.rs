@@ -29,11 +29,16 @@
 pub mod bytes;
 mod cg;
 mod error;
+mod inode;
 mod superblock;
 
 pub use bytes::Endian;
 pub use cg::{CylinderGroup, CG_MAGIC};
 pub use error::UfsError;
+pub use inode::{
+    read_inode, FileType, Inode, Timespec, UFS1_DINODE_SIZE, UFS2_DINODE_SIZE, UFS_NDADDR,
+    UFS_NIADDR,
+};
 pub use superblock::{
     Superblock, UfsVersion, FS_UFS1_MAGIC, FS_UFS2_MAGIC, SBLOCK_UFS1, SBLOCK_UFS2, UFS_ROOTINO,
 };

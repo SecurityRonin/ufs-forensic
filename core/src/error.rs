@@ -67,4 +67,16 @@ pub enum UfsError {
         /// The sane bound it exceeded.
         limit: u64,
     },
+
+    /// The requested inode number is past the filesystem's inode count
+    /// (`fs_ipg * fs_ncg`), so it cannot address a real dinode. Carries the
+    /// requested number and the exclusive upper bound so the caller sees exactly
+    /// what was rejected (fail-loud with the offending value).
+    #[error("inode {ino} out of range: filesystem has {count} inodes (0..{count})")]
+    InodeOutOfRange {
+        /// The inode number that was requested.
+        ino: u64,
+        /// The total inode count (`fs_ipg * fs_ncg`), the exclusive upper bound.
+        count: u64,
+    },
 }

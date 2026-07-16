@@ -12,8 +12,8 @@
 //!     direct block 56;
 //!   inode 4 (passwords.txt): mode 0100644, size 116, nlink 1, uid/gid 0,
 //!     direct block 57;
-//!   inode 5 (a_link): symlink 0120755, size 24, fast target
-//!     "a_directory/another_file".
+//!   inode 5 (`a_link)`: symlink 0120755, size 24, fast target
+//!     "`a_directory/another_file`".
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
