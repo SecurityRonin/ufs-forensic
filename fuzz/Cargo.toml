@@ -1,0 +1,70 @@
+[package]
+name = "ufs-forensic-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Standalone workspace: the fuzz crate must not be pulled into the parent
+# (core/forensic) workspace, whose virtual root manifest is not a package.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+# The fuzzed structures (superblock, cylinder group, dinode, directory block,
+# file block-map / indirect-chain assembly) are the reader's — they live in
+# ufs-core (imported as `ufs`).
+[dependencies.ufs-core]
+path = "../core"
+
+# The full inspect/audit + carve pipeline lives in ufs-forensic.
+[dependencies.ufs-forensic]
+path = "../forensic"
+
+[[bin]]
+name = "superblock"
+path = "fuzz_targets/superblock.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cg"
+path = "fuzz_targets/cg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inode"
+path = "fuzz_targets/inode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dir"
+path = "fuzz_targets/dir.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "file"
+path = "fuzz_targets/file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_forensic"
+path = "fuzz_targets/fuzz_forensic.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1
