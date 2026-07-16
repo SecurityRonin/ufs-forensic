@@ -70,9 +70,44 @@ side, `forensic/tests/integrity.rs` asserts the clean third-party image produces
 **no** false anomalies (`audit_image` empty) — the load-bearing
 "clean-emits-nothing" proof.
 
+**Run commands.** The image is **committed** (excluded from the crate tarball),
+so a clean clone already has it. The always-on fixture tests need no env var; the
+full-image oracle tests are gated on `UFS2_DFVFS_ORACLE` pointing at that same
+committed image:
+
+```bash
+# always-on fixtures (P0-P2 over committed slices, no env var):
+cargo test -p ufs-core --test fixture
+# full-image Tier-1 oracle tests (point the env var at the committed image):
+UFS2_DFVFS_ORACLE=tests/data/ufs2.raw cargo test -p ufs-core \
+  --test superblock_oracle --test inode_oracle \
+  --test dir_oracle --test file_oracle
+```
+
 **Result.** All assertions pass: `ufs-core` reads the real third-party UFS2 image
 correctly, down to per-file content SHA-256, and the auditor raises nothing on the
 clean image.
+
+## Reproduce Tier-1 from a clean clone
+
+The Tier-1 image `tests/data/ufs2.raw` is **committed** (dfvfs `test_data`,
+Apache-2.0, freely redistributable), so step 1 is "already present in the clone":
+
+1. **Already in the clone.** Verify it:
+   ```bash
+   md5 tests/data/ufs2.raw   # == 19216a75a7933dfdac9ded5ff591fe82
+   ```
+   (Origin, if you want to re-fetch:
+   `https://raw.githubusercontent.com/log2timeline/dfvfs/main/test_data/ufs2.raw`.)
+2. **Run the full Tier-1 oracle suite** against it:
+   ```bash
+   UFS2_DFVFS_ORACLE=tests/data/ufs2.raw cargo test -p ufs-core \
+     --test superblock_oracle --test inode_oracle \
+     --test dir_oracle --test file_oracle
+   ```
+
+The indirect-block (Tier-2) and detection-rule (Tier-3) fixtures below are
+crafted in-test — no download, and not Tier-1.
 
 ## Tier-2 — indirect block chains (synthetic, independent-walker cross-check)
 
