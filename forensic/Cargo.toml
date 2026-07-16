@@ -30,6 +30,8 @@ exclude = [
 ufs-core = { workspace = true }
 # The shared report model (Severity/Observation/Finding).
 forensicnomicon = { workspace = true }
+# Audited SHA-256 for the carved-content recovery gate (never hand-rolled).
+sha2 = { workspace = true }
 
 [lints]
 workspace = true

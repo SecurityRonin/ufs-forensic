@@ -166,6 +166,7 @@ name = "ufs-forensic"
 version = "0.1.0"
 dependencies = [
  "forensicnomicon",
+ "sha2",
  "ufs-core",
 ]
 
