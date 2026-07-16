@@ -1,0 +1,35 @@
+[package]
+name = "ufs-forensic"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Forensic anomaly auditor for UFS/FFS — deleted-inode recovery, directory-slack residue, orphaned inodes, geometry integrity as graded report::Finding, built on ufs-core"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/ufs-forensic"
+readme.workspace = true
+authors.workspace = true
+keywords = ["forensics", "ufs", "dfir", "carving", "filesystem"]
+categories.workspace = true
+
+# Keep the repo-root integration-test tree and its committed 4 MiB oracle image
+# (tests/data/ufs2.raw, Apache-2.0) out of the published `.crate`, so the
+# tarball stays well under the ~10 MiB crates.io limit.
+exclude = [
+    "/fuzz",
+    "/.github",
+    "/docs",
+    "/tests",
+    "/tests/data/*.raw",
+    "/tests/data/*.img",
+]
+
+[dependencies]
+# UFS structure knowledge (the reader).
+ufs-core = { workspace = true }
+# The shared report model (Severity/Observation/Finding).
+forensicnomicon = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,26 @@
+[package]
+name = "ufs-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pure-Rust from-scratch UFS/FFS (Unix File System, Berkeley Fast File System) reader — UFS1/UFS2 superblock, cylinder groups, inodes, over any byte source"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/ufs-core"
+readme.workspace = true
+authors.workspace = true
+keywords = ["forensics", "ufs", "filesystem", "dfir", "parser"]
+categories.workspace = true
+
+# The bare `ufs` crate name on crates.io is an obscure file-embedding utility
+# ("ufs embed files and read from disk", 53 downloads) unrelated to the
+# filesystem, so we take the import path `ufs` (consumers write `use ufs::...`).
+[lib]
+name = "ufs"
+
+[dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
