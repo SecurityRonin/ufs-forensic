@@ -34,8 +34,19 @@ exclude = [
 [lib]
 name = "ufs"
 
+[features]
+# Adapt `UfsFs` to the forensic-vfs `FileSystem` trait (see `src/vfs.rs`) so a
+# UFS/FFS volume composes as `Arc<dyn FileSystem>` in the forensic-vfs engine.
+# Opt-in so a bare reader stays dependency-light; consumers who only want the
+# parser pay no forensic-vfs cost.
+vfs = ["dep:forensic-vfs"]
+
 [dependencies]
 thiserror = { workspace = true }
+# forensic-vfs (KNOWLEDGE leaf) — the read-only FileSystem navigation contract.
+# Optional; enabled by the `vfs` feature which turns on `impl FileSystem for
+# UfsFs` so a UFS volume composes as `Arc<dyn FileSystem>`.
+forensic-vfs = { workspace = true, optional = true }
 
 [dev-dependencies]
 sha2 = { workspace = true }

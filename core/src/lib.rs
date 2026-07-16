@@ -33,6 +33,8 @@ mod error;
 mod file;
 mod inode;
 mod superblock;
+#[cfg(feature = "vfs")]
+pub mod vfs;
 
 pub use bytes::Endian;
 pub use cg::{CylinderGroup, CG_MAGIC};
@@ -49,3 +51,5 @@ pub use inode::{
 pub use superblock::{
     Superblock, UfsVersion, FS_UFS1_MAGIC, FS_UFS2_MAGIC, SBLOCK_UFS1, SBLOCK_UFS2, UFS_ROOTINO,
 };
+#[cfg(feature = "vfs")]
+pub use vfs::{ufs_probe, UfsFs};
