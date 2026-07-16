@@ -65,14 +65,6 @@ impl CylinderGroup {
     /// - [`UfsError::BadCgMagic`] if `cg_magic` (offset 4) is not `0x00090255`
     ///   in the given byte order — the offending value is carried.
     pub fn parse(data: &[u8], endian: Endian) -> Result<Self, UfsError> {
-        // RED STUB (TDD): not yet implemented — every P0 cg test fails here.
-        let _ = endian;
-        return Err(UfsError::Truncated {
-            structure: "UNIMPLEMENTED cylinder group",
-            need: 0,
-            have: data.len(),
-        });
-        #[allow(unreachable_code)]
         if data.len() < CG_MIN_LEN {
             return Err(UfsError::Truncated {
                 structure: "cylinder group",
@@ -160,10 +152,11 @@ mod tests {
     fn bad_cg_magic_fails_loud() {
         let mut d = synthetic(Endian::Little);
         d[OFF_MAGIC..OFF_MAGIC + 4].copy_from_slice(&0x1234_5678_u32.to_le_bytes());
-        match CylinderGroup::parse(&d, Endian::Little) {
-            Err(UfsError::BadCgMagic { found, .. }) => assert_eq!(found, 0x1234_5678),
-            other => panic!("expected BadCgMagic, got {other:?}"),
-        }
+        let err = CylinderGroup::parse(&d, Endian::Little).unwrap_err();
+        assert!(
+            matches!(&err, UfsError::BadCgMagic { found, .. } if *found == 0x1234_5678),
+            "expected BadCgMagic with the offending value, got {err:?}"
+        );
     }
 
     #[test]

@@ -127,3 +127,46 @@ pub fn be_u64(data: &[u8], off: usize) -> u64 {
 pub fn u8_at(data: &[u8], off: usize) -> u8 {
     data.get(off).copied().unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn readers_decode_both_orders() {
+        let d = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+        assert_eq!(le_u16(&d, 0), 0x2211);
+        assert_eq!(be_u16(&d, 0), 0x1122);
+        assert_eq!(le_u32(&d, 0), 0x4433_2211);
+        assert_eq!(be_u32(&d, 0), 0x1122_3344);
+        assert_eq!(le_u64(&d, 0), 0x8877_6655_4433_2211);
+        assert_eq!(be_u64(&d, 0), 0x1122_3344_5566_7788);
+        assert_eq!(u8_at(&d, 3), 0x44);
+    }
+
+    #[test]
+    fn readers_yield_zero_out_of_range() {
+        assert_eq!(le_u16(&[0x12], 0), 0);
+        assert_eq!(be_u16(&[0x12], 0), 0);
+        assert_eq!(le_u32(&[0, 0, 0], 0), 0);
+        assert_eq!(be_u32(&[0, 0, 0], 0), 0);
+        assert_eq!(le_u64(&[0; 7], 0), 0);
+        assert_eq!(be_u64(&[0; 7], 0), 0);
+        assert_eq!(u8_at(&[], 0), 0);
+    }
+
+    #[test]
+    fn endian_selector_dispatches_both_orders() {
+        let d = [0xaa, 0xbb, 0xcc, 0xdd, 0x01, 0x02, 0x03, 0x04];
+        assert_eq!(Endian::Little.u16(&d, 0), 0xbbaa);
+        assert_eq!(Endian::Big.u16(&d, 0), 0xaabb);
+        assert_eq!(Endian::Little.u32(&d, 0), 0xddcc_bbaa);
+        assert_eq!(Endian::Big.u32(&d, 0), 0xaabb_ccdd);
+        assert_eq!(Endian::Little.i32(&d, 0), 0xddcc_bbaa_u32 as i32);
+        assert_eq!(Endian::Big.i32(&d, 0), 0xaabb_ccdd_u32 as i32);
+        assert_eq!(Endian::Little.u64(&d, 0), 0x0403_0201_ddcc_bbaa);
+        assert_eq!(Endian::Big.u64(&d, 0), 0xaabb_ccdd_0102_0304);
+        assert_eq!(Endian::Little.i64(&d, 0), 0x0403_0201_ddcc_bbaa_u64 as i64);
+        assert_eq!(Endian::Big.i64(&d, 0), 0xaabb_ccdd_0102_0304_u64 as i64);
+    }
+}

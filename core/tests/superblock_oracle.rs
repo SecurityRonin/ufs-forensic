@@ -6,7 +6,7 @@
 //! absent, like an oracle binary. Ground truth (TSK `fsstat -o 16 -f ufs2`):
 //! UFS2, block 32768 / fragment 4096, 4 cylinder groups, 128 inodes/group,
 //! 256 frags/group. Primary superblock at image byte 73728 (partition base
-//! 8192 + SBLOCK_UFS2 65536); first cg header at image byte 139264.
+//! 8192 + `SBLOCK_UFS2` 65536); first cg header at image byte 139264.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

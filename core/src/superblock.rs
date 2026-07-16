@@ -147,15 +147,22 @@ impl Superblock {
     /// - [`UfsError::Truncated`] if `data` is shorter than the fields read.
     /// - [`UfsError::ImpossibleGeometry`] if a geometry field is out of range.
     pub fn parse(data: &[u8]) -> Result<Self, UfsError> {
-        // RED STUB (TDD): not yet implemented — every P0 test fails here.
-        return Err(UfsError::Truncated {
-            structure: "UNIMPLEMENTED superblock",
-            need: 0,
-            have: data.len(),
-        });
-        #[allow(unreachable_code)]
-        // Validate magic before length so a wrong-image identity error names the
-        // offending bytes even on a short buffer (fail loud with the value).
+        // Length-check first: `fs_magic` is the final field (offset 1372, struct
+        // end 1376 == SB_MIN_LEN), so a buffer that cannot even hold the whole
+        // superblock cannot carry a matching magic — validate the length loudly
+        // rather than let a partial magic read masquerade as a bad image.
+        if data.len() < SB_MIN_LEN {
+            return Err(UfsError::Truncated {
+                structure: "superblock",
+                need: SB_MIN_LEN,
+                have: data.len(),
+            });
+        }
+
+        // Detect version + byte order from `fs_magic`, trying both byte orders
+        // against both known magics. Read via bounds-checked helpers so a hostile
+        // buffer never panics; a wrong image fails loud carrying the offending
+        // bytes (fail-loud with the value).
         let bytes = [
             u8_at(data, FS_MAGIC_OFF),
             u8_at(data, FS_MAGIC_OFF + 1),
@@ -178,16 +185,6 @@ impl Superblock {
                 })
             }
         };
-
-        // All parsed fields lie within the first SB_MIN_LEN bytes; range-check
-        // once so the bounds-checked readers below never mask a short image.
-        if data.len() < SB_MIN_LEN {
-            return Err(UfsError::Truncated {
-                structure: "superblock",
-                need: SB_MIN_LEN,
-                have: data.len(),
-            });
-        }
 
         // UFS1 stores size/time in the 32-bit `fs_old_*` fields; UFS2 in the
         // 64-bit fields. Branch on the detected version.
@@ -380,44 +377,54 @@ mod tests {
     }
 
     #[test]
+    fn detects_ufs1_big_endian() {
+        let d = synthetic(FS_UFS1_MAGIC, Endian::Big, false);
+        let sb = Superblock::parse(&d).unwrap();
+        assert_eq!(sb.version, UfsVersion::Ufs1);
+        assert_eq!(sb.endian, Endian::Big);
+        assert_eq!(sb.size, 1000, "UFS1 old_size decoded big-endian");
+        assert_eq!(sb.inode_size(), 128);
+    }
+
+    #[test]
     fn bad_magic_fails_loud_with_bytes() {
         let mut d = vec![0u8; SB_MIN_LEN];
         d[FS_MAGIC_OFF..FS_MAGIC_OFF + 4].copy_from_slice(&0xdead_beef_u32.to_le_bytes());
-        match Superblock::parse(&d) {
-            Err(UfsError::BadMagic {
-                offset, bytes, le, ..
-            }) => {
-                assert_eq!(offset, FS_MAGIC_OFF);
-                assert_eq!(le, 0xdead_beef);
-                assert_eq!(bytes, 0xdead_beef_u32.to_le_bytes());
-            }
-            other => panic!("expected BadMagic, got {other:?}"),
-        }
+        let err = Superblock::parse(&d).unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                UfsError::BadMagic { offset, bytes, le, .. }
+                    if *offset == FS_MAGIC_OFF
+                        && *le == 0xdead_beef
+                        && *bytes == 0xdead_beef_u32.to_le_bytes()
+            ),
+            "expected BadMagic with offending bytes, got {err:?}"
+        );
     }
 
     #[test]
-    fn truncated_after_valid_magic_does_not_panic() {
-        // A buffer carrying the magic but shorter than the struct: magic is read
-        // via bounds-checked u8_at, then the length check fails loud.
-        let mut d = vec![0u8; SB_MIN_LEN - 1];
-        d[FS_MAGIC_OFF..FS_MAGIC_OFF + 4].copy_from_slice(&FS_UFS2_MAGIC.to_le_bytes());
-        match Superblock::parse(&d) {
-            Err(UfsError::Truncated {
-                structure, need, ..
-            }) => {
-                assert_eq!(structure, "superblock");
-                assert_eq!(need, SB_MIN_LEN);
-            }
-            other => panic!("expected Truncated, got {other:?}"),
-        }
+    fn truncated_buffer_fails_loud_not_panic() {
+        // A buffer one byte shorter than the struct cannot hold the whole
+        // superblock (magic is the tail field), so the length guard fires first
+        // — a loud Truncated, never a panic.
+        let d = vec![0u8; SB_MIN_LEN - 1];
+        let err = Superblock::parse(&d).unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                UfsError::Truncated { structure, need, .. }
+                    if *structure == "superblock" && *need == SB_MIN_LEN
+            ),
+            "expected Truncated superblock, got {err:?}"
+        );
     }
 
     #[test]
-    fn empty_buffer_reports_bad_magic_not_panic() {
-        // Magic reads as 0 (bounds-checked), so it is a BadMagic, not a panic.
+    fn empty_buffer_reports_truncated_not_panic() {
         assert!(matches!(
             Superblock::parse(&[]),
-            Err(UfsError::BadMagic { .. })
+            Err(UfsError::Truncated { .. })
         ));
     }
 
