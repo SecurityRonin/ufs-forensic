@@ -1,5 +1,20 @@
 /target
+
+# Cargo.lock IS committed: CI must resolve the exact dependency graph rather
+# than a fresh resolution that could pull a license-tainted or edition-
+# incompatible transitive. The lock also backs the CI freshness gate.
+# (Downstream library consumers still resolve their own graph — a committed lock
+# does not constrain them.)
+
+# The 4 MiB dfvfs UFS2 Tier-1 oracle image (tests/data/ufs2.raw) and its small
+# extracted fixtures (ufs2_*.bin) ARE committed — they are well under the ~10 MiB
+# crates.io tarball limit and are excluded from the published .crate anyway (see
+# forensic/Cargo.toml `exclude`). Any larger, re-downloadable UFS1 corpus added
+# later should be gitignored here.
+
+# OS / editor cruft (belt-and-suspenders alongside a machine-wide core.excludesfile).
 .DS_Store
-*.swp
+Thumbs.db
 .idea/
 .vscode/
+*.swp

@@ -1,0 +1,19 @@
+# gitleaks configuration — extends the default ruleset and allowlists known
+# false positives. The committed UFS fixtures under tests/data are raw on-disk
+# filesystem bytes (superblock, cylinder-group header, inode table, directory
+# block) and the small dfvfs UFS2 image itself; their high-entropy regions
+# (fsids, csums, packed dinode fields) can trip gitleaks' generic high-entropy
+# rules even though they hold no secrets. Scoped to the fixture paths so real
+# secrets anywhere else still surface.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "UFS on-disk fixtures are filesystem bytes, not secrets"
+paths = [
+  '''tests/data/.*\.bin$''',
+  '''tests/data/.*\.raw$''',
+  '''tests/data/.*\.img$''',
+  '''tests/data/.*\.txt$''',
+  '''tests/data/.*\.sha256$''',
+]
