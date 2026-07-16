@@ -78,8 +78,17 @@ const UFS2_MAGIC_OFF: usize = SBLOCK_UFS2 + 1372;
 /// so the engine registers it without re-deriving the magic, and so tests drive
 /// the probe directly.
 #[must_use]
-pub fn ufs_probe(_w: &SniffWindow) -> Confidence {
-    // RED stub: not yet implemented.
+pub fn ufs_probe(w: &SniffWindow) -> Confidence {
+    if w.has_magic(UFS2_MAGIC_OFF, UFS2_MAGIC_LE) || w.has_magic(UFS2_MAGIC_OFF, UFS2_MAGIC_BE) {
+        return Confidence::Yes {
+            how: "UFS2 fs_magic 0x19540119 at offset 66908",
+        };
+    }
+    if w.has_magic(UFS1_MAGIC_OFF, UFS1_MAGIC_LE) || w.has_magic(UFS1_MAGIC_OFF, UFS1_MAGIC_BE) {
+        return Confidence::Yes {
+            how: "UFS1 fs_magic 0x00011954 at offset 9564",
+        };
+    }
     Confidence::No
 }
 
@@ -203,67 +212,169 @@ fn to_ts(ts: Timespec) -> TimeStamp {
 }
 
 impl FileSystem for UfsFs {
-    // RED stubs — the tests below define the expected behavior; the GREEN commit
-    // fills these in.
     fn kind(&self) -> FsKind {
-        FsKind::NTFS
+        FsKind::UFS
     }
 
     fn root(&self) -> FileId {
-        FileId::Opaque(0)
+        FileId::Opaque(UFS_ROOTINO)
     }
 
     fn sector_sizes(&self) -> SectorSizes {
         SectorSizes {
-            logical: 0,
-            physical: 0,
-            cluster_or_block: 0,
+            logical: 512,
+            physical: 512,
+            cluster_or_block: if self.sb.bsize > 0 {
+                self.sb.bsize as u32
+            } else {
+                0 // cov:unreachable: Superblock::parse rejects fs_bsize<=0
+            },
         }
     }
 
     fn timestamp_zone(&self) -> TimeZonePolicy {
-        TimeZonePolicy::LocalUnknown
+        // UFS timestamps are seconds/nanoseconds from the Unix epoch, in UTC.
+        TimeZonePolicy::Utc
     }
 
-    fn read_dir(&self, _ino: FileId) -> VfsResult<DirStream> {
-        Ok(DirStream::empty())
+    fn read_dir(&self, ino: FileId) -> VfsResult<DirStream> {
+        let dir_ino = ino_of(ino)?;
+        let entries = list_dir(&self.image, &self.sb, dir_ino).map_err(map_err)?;
+        // `.`/`..` are real UFS entries; surface them like the reader does, each
+        // classified via a cheap inode read rather than trusting the on-disk
+        // d_type byte (absent on old-format directories).
+        let out: Vec<VfsResult<VfsDirEntry>> = entries
+            .into_iter()
+            .map(|e| {
+                Ok(VfsDirEntry {
+                    name: e.name,
+                    id: FileId::Opaque(e.ino),
+                    kind: self.entry_kind(e.ino),
+                })
+            })
+            .collect();
+        Ok(DirStream::new(out.into_iter()))
     }
 
-    fn extents(&self, _ino: FileId, _stream: StreamId) -> VfsResult<ExtentStream> {
-        Ok(ExtentStream::empty())
+    fn extents(&self, ino: FileId, stream: StreamId) -> VfsResult<ExtentStream> {
+        require_default_stream(stream)?;
+        let inode = self.inode(ino)?;
+        let fsize = self.sb.fsize.max(0) as u64;
+        let bsize = self.sb.bsize.max(0) as u64;
+        // Surface the direct-block runs (the common small-file case). Each
+        // non-zero direct pointer is a fragment address (`addr * fs_fsize`); the
+        // run length is one block, clamped by the file's remaining size so the
+        // last (tail) block is not over-reported. Indirect-block runs are a
+        // follow-up (read_at still walks them for content).
+        let mut remaining = inode.size;
+        let mut runs: Vec<VfsResult<RunInfo>> = Vec::new();
+        for &addr in inode.direct.iter().take(UFS_NDADDR) {
+            if remaining == 0 {
+                break;
+            }
+            let this = remaining.min(bsize.max(1));
+            if addr != 0 {
+                runs.push(Ok(RunInfo {
+                    run: ByteRun {
+                        image_offset: addr.saturating_mul(fsize),
+                        len: this,
+                        flags: RunFlags::default(),
+                    },
+                    alloc: RunAlloc::Allocated,
+                }));
+            }
+            remaining = remaining.saturating_sub(bsize.max(1));
+        }
+        Ok(ExtentStream::new(runs.into_iter()))
     }
 
-    fn lookup(&self, _parent: FileId, _name: &[u8]) -> VfsResult<Option<FileId>> {
-        Ok(None)
+    fn lookup(&self, parent: FileId, name: &[u8]) -> VfsResult<Option<FileId>> {
+        let dir_ino = ino_of(parent)?;
+        let entries = list_dir(&self.image, &self.sb, dir_ino).map_err(map_err)?;
+        Ok(entries
+            .into_iter()
+            .find(|e| e.name == name)
+            .map(|e| FileId::Opaque(e.ino)))
     }
 
-    fn meta(&self, _ino: FileId) -> VfsResult<FsMeta> {
-        Err(VfsError::Unsupported {
-            layer: "ufs meta (RED stub)",
-            scheme: String::new(),
+    fn meta(&self, ino: FileId) -> VfsResult<FsMeta> {
+        let inode_no = ino_of(ino)?;
+        let inode = read_inode(&self.image, &self.sb, inode_no).map_err(map_err)?;
+        // A fast (inline) symlink stores its target in the block-pointer bytes of
+        // the dinode → resident; every other node's data lives out in blocks.
+        let residency = match inode.symlink_target() {
+            Some(t) => ResidencyKind::Resident {
+                inline_len: u32::try_from(t.len()).unwrap_or(u32::MAX),
+            },
+            None => ResidencyKind::NonResident,
+        };
+        Ok(FsMeta {
+            ino: inode_no,
+            kind: node_kind(inode.file_type),
+            allocated: Allocation::Allocated,
+            size: inode.size,
+            nlink: u32::from(inode.nlink),
+            uid: Some(inode.uid),
+            gid: Some(inode.gid),
+            mode: Some(u32::from(inode.mode)),
+            times: MacbTimes {
+                modified: Some(to_ts(inode.mtime)),
+                accessed: Some(to_ts(inode.atime)),
+                changed: Some(to_ts(inode.ctime)),
+                born: inode.birthtime.map(to_ts),
+            },
+            streams: Vec::new(),
+            residency,
+            link_target: None,
         })
     }
 
-    fn read_at(
-        &self,
-        _ino: FileId,
-        _stream: StreamId,
-        _off: u64,
-        _buf: &mut [u8],
-    ) -> VfsResult<usize> {
-        Ok(0)
+    fn read_at(&self, ino: FileId, stream: StreamId, off: u64, buf: &mut [u8]) -> VfsResult<usize> {
+        require_default_stream(stream)?;
+        let inode_no = ino_of(ino)?;
+        // ufs-core exposes only whole-file reconstruction; window its result to
+        // [off, off+buf.len()). A start past EOF reads zero bytes (never panics).
+        let file = read_file(&self.image, &self.sb, inode_no).map_err(map_err)?;
+        let start = usize::try_from(off).unwrap_or(usize::MAX);
+        let Some(slice) = file.get(start..) else {
+            return Ok(0);
+        };
+        let n = slice.len().min(buf.len());
+        buf[..n].copy_from_slice(&slice[..n]);
+        Ok(n)
     }
 
-    fn read_link(&self, _ino: FileId, _cap: usize) -> VfsResult<Vec<u8>> {
-        Ok(Vec::new())
+    fn read_link(&self, ino: FileId, cap: usize) -> VfsResult<Vec<u8>> {
+        let inode = self.inode(ino)?;
+        if inode.file_type != FileType::Symlink {
+            // A non-symlink reads as an empty target (matches ext4/NTFS/XFS).
+            return Ok(Vec::new());
+        }
+        // read_symlink_target handles both fast (inline) and slow (data-block)
+        // symlinks; cap the returned target so a hostile symlink cannot allocate
+        // without bound beyond the cap.
+        let mut target = read_symlink_target(&self.image, &self.sb, &inode).map_err(map_err)?;
+        target.truncate(cap);
+        Ok(target)
     }
 
     fn deleted(&self) -> VfsResult<NodeStream> {
+        // Deleted-inode / free-slot carving is the ufs-forensic layer's job; the
+        // reader adapter's default surface is an empty stream, not a bootstrap
+        // failure.
         Ok(NodeStream::empty())
     }
 
     fn unallocated(&self) -> VfsResult<ExtentStream> {
         Ok(ExtentStream::empty())
+    }
+}
+
+impl UfsFs {
+    /// Classify a child by reading its inode; degrade to `Other` (never panic) if
+    /// the inode read fails on a volume this handle was already opened from.
+    fn entry_kind(&self, ino: u64) -> NodeKind {
+        read_inode(&self.image, &self.sb, ino).map_or(NodeKind::Other, |i| node_kind(i.file_type))
     }
 }
 
@@ -446,7 +557,7 @@ mod tests {
         d
     }
 
-    /// Encode a fast-symlink UFS2 dinode: mode IFLNK, target inline in di_db.
+    /// Encode a fast-symlink UFS2 dinode: mode IFLNK, target inline in `di_db`.
     fn symlink_dinode(target: &[u8]) -> Vec<u8> {
         let mut d = vec![0u8; ISZ];
         d[0..2].copy_from_slice(&0o120_777u16.to_le_bytes()); // di_mode IFLNK
@@ -566,16 +677,14 @@ mod tests {
     #[test]
     fn open_rejects_non_ufs_source_loud() {
         // UfsFs holds the whole image and intentionally derives no Debug (so an
-        // image never leaks into a panic message), so assert via a match rather
-        // than `.unwrap_err()`.
+        // image never leaks into a panic message), so assert via `matches!`
+        // rather than `.unwrap_err()` (which would need Debug).
         let bad = vec![0u8; SBLOCK_UFS2 + 2000];
-        match UfsFs::open(&(StdArc::new(Bytes(bad)) as DynSource)) {
-            Err(VfsError::Decode { layer: "ufs", .. }) => {}
-            other => panic!(
-                "expected a UFS Decode error, got {:?}",
-                other.map(|_| "Ok(UfsFs)")
-            ),
-        }
+        let opened = UfsFs::open(&(StdArc::new(Bytes(bad)) as DynSource));
+        assert!(
+            matches!(opened, Err(VfsError::Decode { layer: "ufs", .. })),
+            "a non-UFS source must fail loud with a UFS Decode error"
+        );
     }
 
     #[test]
