@@ -119,10 +119,10 @@ fn committed_symlink_inode5_is_fast_symlink() {
 // passwords.txt(4), a_link(5). The raw block also carries `.`(2)/`..`(2).
 
 /// Assemble a minimal filesystem partition from the committed fixtures: the real
-/// superblock at SBLOCK_UFS2, the real inode 2 (root) at its located byte, and
+/// superblock at `SBLOCK_UFS2`, the real inode 2 (root) at its located byte, and
 /// the real root directory block at the fragment inode 2 points to (frag 56).
 /// This drives the *public* `list_dir_all` end-to-end over real bytes without
-/// the 4 MiB image, so the `struct direct` walk is validated always-on.
+/// the 4 `MiB` image, so the `struct direct` walk is validated always-on.
 fn partition_with_real_root() -> (Vec<u8>, Superblock) {
     let sb = Superblock::parse(SUPERBLOCK).expect("parse superblock");
     // Root inode 2: cg0, within=2 => byte = iblkno(40)*fsize(4096) + 2*256.

@@ -11,7 +11,7 @@
 //!   root (/): `.snap`(3), `a_directory`(128), `passwords.txt`(4), `a_link`(5)
 //!     (plus the `.`/`..` entries the raw block carries).
 //!   `fls -r`: `a_directory` → `a_file`(129), `another_file`(130).
-//! `ffind`: inode 4 = /passwords.txt, 129 = /a_directory/a_file.
+//! `ffind`: inode 4 = `/passwords.txt`, 129 = `/a_directory/a_file`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

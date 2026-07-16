@@ -155,9 +155,10 @@ pub fn read_block<'a>(
             limit: i64::MAX as u64,
         });
     }
-    // RED STUB — implemented in GREEN.
-    let _ = (partition, addr, len);
-    Ok(&[])
+    let fsize = sb.fsize as u64;
+    let start = usize::try_from(addr.saturating_mul(fsize)).unwrap_or(usize::MAX);
+    let end = start.saturating_add(len).min(partition.len());
+    Ok(partition.get(start..end.max(start)).unwrap_or(&[]))
 }
 
 /// Decode the directory entries of the directory inode `dir_ino`, returning the
@@ -212,17 +213,74 @@ pub fn list_dir_all(
 /// `d_reclen` of `0` (or one that would not advance past the head) ends the
 /// current block rather than spinning.
 fn list_dir_entries(partition: &[u8], sb: &Superblock, inode: &Inode) -> Vec<DirEntry> {
-    // RED STUB — implemented in GREEN.
-    let _ = (partition, sb, inode);
-    Vec::new()
+    let mut entries = Vec::new();
+    if sb.fsize <= 0 {
+        return entries; // cov:unreachable: read_inode already rejects fs_fsize<=0
+    }
+    let bsize = if sb.bsize > 0 {
+        sb.bsize as u64
+    } else {
+        DIRBLKSIZ as u64 // cov:unreachable: Superblock::parse rejects fs_bsize<=0
+    };
+    let mut remaining = inode.size;
+
+    for &addr in &inode.direct {
+        if remaining == 0 {
+            break;
+        }
+        if addr == 0 {
+            // A hole in the directory file — no data block. Still account for
+            // the block's worth of the logical size so the loop terminates.
+            remaining = remaining.saturating_sub(bsize);
+            continue;
+        }
+        let want = usize::try_from(remaining.min(bsize)).unwrap_or(usize::MAX);
+        let Ok(block) = read_block(partition, sb, addr, want) else {
+            break; // cov:unreachable: fs_fsize>0 checked above; read_block only errors on fsize<=0
+        };
+        walk_block(block, sb.endian, &mut entries);
+        remaining = remaining.saturating_sub(bsize);
+    }
+    entries
 }
 
 /// Walk one directory data `block`, appending every `struct direct` slot to
 /// `out`. Bounds every read; a lying `d_reclen`/`d_namlen` never over-reads or
 /// loops forever.
 fn walk_block(block: &[u8], endian: Endian, out: &mut Vec<DirEntry>) {
-    // RED STUB — implemented in GREEN.
-    let _ = (block, endian, out);
+    let mut off = 0usize;
+    while off + DIRECT_HEAD <= block.len() {
+        let ino = u64::from(endian.u32(block, off + OFF_INO));
+        let reclen = endian.u16(block, off + OFF_RECLEN) as usize;
+        let d_type = crate::bytes::u8_at(block, off + OFF_TYPE);
+        let namlen = crate::bytes::u8_at(block, off + OFF_NAMLEN) as usize;
+
+        // A d_reclen that cannot even hold the head (or is zero) is corrupt /
+        // marks the block's end — stop walking this block rather than spin.
+        if reclen < DIRECT_HEAD {
+            break;
+        }
+
+        // The name spans namlen bytes after the head, clamped so a lying namlen
+        // cannot read past this entry's record or the block.
+        let name_start = off + OFF_NAME;
+        let name_cap = reclen.saturating_sub(OFF_NAME);
+        let take = namlen.min(name_cap);
+        let name_end = name_start.saturating_add(take).min(block.len());
+        let name = block
+            .get(name_start..name_end)
+            .map(<[u8]>::to_vec)
+            .unwrap_or_default();
+
+        out.push(DirEntry {
+            name,
+            ino,
+            file_type: DirEntryType::from_d_type(d_type),
+            deleted: ino == 0,
+        });
+
+        off = off.saturating_add(reclen);
+    }
 }
 
 /// Resolve an absolute path (e.g. `"/a/b/c"`) to its `(inode number, inode)`,
@@ -271,7 +329,7 @@ pub fn read_by_path(
 #[allow(clippy::unreadable_literal)]
 mod tests {
     use super::*;
-    use crate::superblock::{FS_UFS2_MAGIC, SBLOCK_UFS2};
+    use crate::superblock::{UfsVersion, FS_UFS2_MAGIC, SBLOCK_UFS2};
 
     #[test]
     fn d_type_classifies_all_dt_values() {
@@ -466,7 +524,7 @@ mod tests {
 
     // ── list_dir / read_by_path over a synthetic partition ───────────────────
 
-    /// Build a synthetic partition holding: a UFS2 superblock at SBLOCK_UFS2;
+    /// Build a synthetic partition holding: a UFS2 superblock at `SBLOCK_UFS2`;
     /// the root dir inode (2) pointing at a data block that lists the real root
     /// layout; and a nested `a_directory` (inode 128) + `a_file` (inode 129).
     /// Returns (partition, superblock).
@@ -549,6 +607,8 @@ mod tests {
         // a_directory inode 128: directory
         part[ino_byte(128)..ino_byte(128) + inode_size]
             .copy_from_slice(&dir_inode(adir_frag, 512, 0o040755));
+        // passwords.txt inode 4: regular file (116 bytes, matching P1).
+        part[ino_byte(4)..ino_byte(4) + inode_size].copy_from_slice(&dir_inode(0, 116, 0o100644));
         // a_file inode 129: regular file
         part[ino_byte(129)..ino_byte(129) + inode_size]
             .copy_from_slice(&dir_inode(0, 116, 0o100644));
@@ -589,6 +649,44 @@ mod tests {
         let pw = entries.iter().find(|e| e.name == b"passwords.txt").unwrap();
         assert_eq!(pw.ino, 4);
         assert_eq!(pw.file_type, DirEntryType::Regular);
+    }
+
+    #[test]
+    fn list_dir_skips_hole_in_direct_pointers() {
+        // A directory whose logical size spans two blocks but whose second
+        // direct pointer is a hole (addr == 0): the walk consumes the first
+        // block's entries and skips the hole without reading a data block or
+        // looping. Exercises the addr==0 branch in list_dir_entries.
+        let sb = tiny_sb();
+        let fsize = sb.fsize as u64;
+        let bsize = sb.bsize as u64; // 32768
+        let frag0 = 60u64;
+
+        // Build a directory inode: size = 2 * bsize, direct[0] = frag0, the rest
+        // (incl. direct[1]) left 0 (holes).
+        let mut dino = vec![0u8; 256];
+        dino[0..2].copy_from_slice(&0o040755u16.to_le_bytes()); // di_mode = dir
+        dino[2..4].copy_from_slice(&1u16.to_le_bytes());
+        dino[16..24].copy_from_slice(&(2 * bsize).to_le_bytes()); // di_size
+        dino[112..120].copy_from_slice(&frag0.to_le_bytes()); // di_db[0]
+        let inode = Inode::parse(&dino, UfsVersion::Ufs2, Endian::Little).unwrap();
+        assert_eq!(inode.direct[1], 0, "second pointer is a hole");
+
+        // Lay the first block's entries at frag0.
+        let mut block = Vec::new();
+        block.extend(direct(9, 12, 8, b"x"));
+        block.extend(direct(10, DIRBLKSIZ as u16 - 12, 8, b"y"));
+        let start = (frag0 * fsize) as usize;
+        let mut part = vec![0u8; start + block.len()];
+        part[start..start + block.len()].copy_from_slice(&block);
+
+        let entries = list_dir_entries(&part, &sb, &inode);
+        let names: Vec<&[u8]> = entries.iter().map(|e| e.name.as_slice()).collect();
+        assert_eq!(
+            names,
+            vec![&b"x"[..], &b"y"[..]],
+            "first block walked, hole skipped"
+        );
     }
 
     #[test]
