@@ -28,12 +28,17 @@
 
 pub mod bytes;
 mod cg;
+mod dir;
 mod error;
 mod inode;
 mod superblock;
 
 pub use bytes::Endian;
 pub use cg::{CylinderGroup, CG_MAGIC};
+pub use dir::{
+    list_dir, list_dir_all, read_block, read_by_path, DirEntry, DirEntryType, DIRBLKSIZ,
+    DIR_ROUNDUP,
+};
 pub use error::UfsError;
 pub use inode::{
     read_inode, FileType, Inode, Timespec, UFS1_DINODE_SIZE, UFS2_DINODE_SIZE, UFS_NDADDR,

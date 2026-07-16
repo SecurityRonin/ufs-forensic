@@ -69,6 +69,18 @@ open('ufs2_inodes_0_15.bin','wb').write(d[172032:172032+4096])"`.
   (`core/tests/inode_oracle.rs`; `read_inode` locate+decode on the partition
   slice, gated on `UFS2_DFVFS_ORACLE`) and the always-on `Inode::parse` decode
   tests over `ufs2_inodes_0_15.bin` in `core/tests/fixture.rs`.
+- **`ufs2_rootdir.bin`** — the root directory's 512-byte (`DIRBLKSIZ`) data block
+  (root inode 2's direct fragment 56 → image byte 237568 = partition base 8192 +
+  fragment 56 × `fs_fsize` 4096). Re-extract with:
+  `python3 -c "d=open('ufs2.raw','rb').read();
+  open('ufs2_rootdir.bin','wb').write(d[237568:237568+512])"`.
+  md5 `0d73dd459b9013e8e41a1b9e7e2cef30`. The `struct direct` entries here are the
+  P2 directory-walk ground truth: `.`(2)/`..`(2)/`.snap`(3)/`a_directory`(128)/
+  `passwords.txt`(4)/`a_link`(5), the last record's `d_reclen` (428) absorbing
+  the block tail (12+12+16+20+24+428 = 512). Matches `fls -o 16 -f ufs2` (which
+  omits `.`/`..`). Used by the always-on `list_dir_all` walk test in
+  `core/tests/fixture.rs` and, on the full image, the env-gated
+  `core/tests/dir_oracle.rs` (`list_dir` / `read_by_path` vs `fls` / `ffind`).
 
 ## UFS1 — deferred to a real image (NOT yet committed)
 

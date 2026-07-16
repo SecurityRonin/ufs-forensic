@@ -12,13 +12,19 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use ufs::{CylinderGroup, Endian, FileType, Inode, Superblock, UfsVersion};
+use ufs::{
+    list_dir_all, CylinderGroup, DirEntryType, Endian, FileType, Inode, Superblock, UfsVersion,
+};
 
 // From <member>/tests/<file>.rs the repo root is two levels up.
 const SUPERBLOCK: &[u8] = include_bytes!("../../tests/data/ufs2_superblock.bin");
 const CG0: &[u8] = include_bytes!("../../tests/data/ufs2_cg0.bin");
 /// First 16 UFS2 dinodes (256 B each) of cg0's inode table.
 const INODES_0_15: &[u8] = include_bytes!("../../tests/data/ufs2_inodes_0_15.bin");
+/// The root directory's 512-byte data block (fragment 56 of the real image),
+/// carrying the `struct direct` entries for `.`/`..`/`.snap`/`a_directory`/
+/// `passwords.txt`/`a_link`.
+const ROOTDIR: &[u8] = include_bytes!("../../tests/data/ufs2_rootdir.bin");
 
 const UFS2_DINODE_SIZE: usize = 256;
 
@@ -106,4 +112,66 @@ fn committed_symlink_inode5_is_fast_symlink() {
         Some(&b"a_directory/another_file"[..]),
         "fast-symlink target inline in di_db",
     );
+}
+
+// ── P2: directory walk vs the TSK `fls` ground truth ─────────────────────────
+// fls -o 16 -f ufs2 ufs2.raw (root): .snap(3), a_directory(128),
+// passwords.txt(4), a_link(5). The raw block also carries `.`(2)/`..`(2).
+
+/// Assemble a minimal filesystem partition from the committed fixtures: the real
+/// superblock at SBLOCK_UFS2, the real inode 2 (root) at its located byte, and
+/// the real root directory block at the fragment inode 2 points to (frag 56).
+/// This drives the *public* `list_dir_all` end-to-end over real bytes without
+/// the 4 MiB image, so the `struct direct` walk is validated always-on.
+fn partition_with_real_root() -> (Vec<u8>, Superblock) {
+    let sb = Superblock::parse(SUPERBLOCK).expect("parse superblock");
+    // Root inode 2: cg0, within=2 => byte = iblkno(40)*fsize(4096) + 2*256.
+    let iblkno = sb.iblkno as usize;
+    let fsize = sb.fsize as usize;
+    let ino2_byte = iblkno * fsize + 2 * 256;
+    // Root inode 2's direct[0] is fragment 56 (from istat) => byte 56*4096.
+    let root_frag = 56usize;
+    let root_block_byte = root_frag * fsize;
+
+    let end = (ino2_byte + 256)
+        .max(root_block_byte + ROOTDIR.len())
+        .max(SUPERBLOCK.len());
+    let mut part = vec![0u8; end + 16];
+    part[..SUPERBLOCK.len()].copy_from_slice(SUPERBLOCK); // sb sits at SBLOCK_UFS2 = 65536 < ino2_byte
+                                                          // Overwrite from the fixture: the SUPERBLOCK fixture starts at image byte
+                                                          // 73728 == filesystem byte 65536 == SBLOCK_UFS2. Place it there.
+    let sboff = ufs::SBLOCK_UFS2;
+    part[sboff..sboff + SUPERBLOCK.len()].copy_from_slice(SUPERBLOCK);
+    part[ino2_byte..ino2_byte + 256].copy_from_slice(dinode(2));
+    part[root_block_byte..root_block_byte + ROOTDIR.len()].copy_from_slice(ROOTDIR);
+    (part, sb)
+}
+
+#[test]
+fn committed_root_directory_walk_matches_fls() {
+    let (part, sb) = partition_with_real_root();
+    let entries = list_dir_all(&part, &sb, 2).expect("list root");
+    let names: Vec<&[u8]> = entries.iter().map(|e| e.name.as_slice()).collect();
+    assert_eq!(
+        names,
+        vec![
+            &b"."[..],
+            &b".."[..],
+            &b".snap"[..],
+            &b"a_directory"[..],
+            &b"passwords.txt"[..],
+            &b"a_link"[..],
+        ],
+        "struct direct walk == real root block layout",
+    );
+    let by_name = |n: &[u8]| entries.iter().find(|e| e.name == n).map(|e| e.ino);
+    assert_eq!(by_name(b".snap"), Some(3));
+    assert_eq!(by_name(b"a_directory"), Some(128));
+    assert_eq!(by_name(b"passwords.txt"), Some(4), "fls: passwords.txt = 4");
+    assert_eq!(by_name(b"a_link"), Some(5));
+    let ftype = |n: &[u8]| entries.iter().find(|e| e.name == n).map(|e| e.file_type);
+    assert_eq!(ftype(b"a_directory"), Some(DirEntryType::Directory));
+    assert_eq!(ftype(b"passwords.txt"), Some(DirEntryType::Regular));
+    assert_eq!(ftype(b"a_link"), Some(DirEntryType::Symlink));
+    assert!(entries.iter().all(|e| !e.deleted), "all root entries live");
 }
