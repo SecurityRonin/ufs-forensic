@@ -13,6 +13,21 @@ authors.workspace = true
 keywords = ["forensics", "ufs", "filesystem", "dfir", "parser"]
 categories.workspace = true
 
+# Keep the repo-root integration-test tree and the committed dfvfs oracle image
+# (tests/data/ufs2.raw + the ufs2_*.bin fixtures, Apache-2.0) out of the
+# published `.crate`. The integration tests `include_bytes!("../../tests/data/..")`
+# from the repo root, which is not part of this crate's package dir, so shipping
+# `core/tests/*.rs` would ship files that cannot compile downstream. Excluding
+# `/tests` also keeps the tarball source-only and well under the ~10 MiB limit.
+exclude = [
+    "/fuzz",
+    "/.github",
+    "/docs",
+    "/tests",
+    "/tests/data/*.raw",
+    "/tests/data/*.img",
+]
+
 # The bare `ufs` crate name on crates.io is an obscure file-embedding utility
 # ("ufs embed files and read from disk", 53 downloads) unrelated to the
 # filesystem, so we take the import path `ufs` (consumers write `use ufs::...`).
