@@ -40,16 +40,35 @@ and its test is always-on.
 
 ### Committed always-on fixtures (extracted from `ufs2.raw`)
 
-Two small slices of the image above, committed so `core/tests/fixture.rs` runs
+Small slices of the image above, committed so `core/tests/fixture.rs` runs
 in a plain `cargo test` (no env var). Re-extract with:
 `python3 -c "d=open('ufs2.raw','rb').read();
 open('ufs2_superblock.bin','wb').write(d[73728:73728+1376]);
-open('ufs2_cg0.bin','wb').write(d[139264:139264+256])"`.
+open('ufs2_cg0.bin','wb').write(d[139264:139264+256]);
+open('ufs2_inodes_0_15.bin','wb').write(d[172032:172032+4096])"`.
 
 - **`ufs2_superblock.bin`** — the 1376-byte primary UFS2 superblock (image byte
   73728). md5 `6323c77a514e2e82c620dd4138259fbd`.
 - **`ufs2_cg0.bin`** — the 256-byte first cylinder-group header (image byte
   139264). md5 `84f832db7344638fbd7319b1b66e15c4`.
+- **`ufs2_inodes_0_15.bin`** — the first 16 UFS2 dinodes (256 B each = 4096
+  bytes) of cg0's inode table (image byte 172032 = partition base 8192 +
+  filesystem byte 163840, where the inode table starts at fragment
+  `fs_iblkno`=40 × `fs_fsize`=4096). Covers the ground-truth inodes 2/4/5.
+  md5 `106d1a90e7a80e9039ffcf4f0441abaf`. Used by the P1 inode-decode tests in
+  `core/tests/fixture.rs`.
+  - **Ground truth (`istat -o 16 -f ufs2 ufs2.raw <ino>`):**
+    - inode **2** (root dir): mode `drwxr-xr-x` (040755), size 512, nlink 4,
+      uid/gid 0, direct block 56.
+    - inode **4** (`passwords.txt`): mode 0100644, size 116, nlink 1, uid/gid 0,
+      direct block 57.
+    - inode **5** (`a_link`): symlink (0120755), size 24, fast (inline) target
+      `a_directory/another_file` (size ≤ `fs_maxsymlinklen`=120).
+    - mtime seconds = 1682843463 (2023-04-30 08:31:03 UTC = 16:31:03 HKT).
+- **Used by:** the env-gated full-image inode oracle test
+  (`core/tests/inode_oracle.rs`; `read_inode` locate+decode on the partition
+  slice, gated on `UFS2_DFVFS_ORACLE`) and the always-on `Inode::parse` decode
+  tests over `ufs2_inodes_0_15.bin` in `core/tests/fixture.rs`.
 
 ## UFS1 — deferred to a real image (NOT yet committed)
 
