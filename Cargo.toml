@@ -22,6 +22,7 @@ readme = "README.md"
 ufs-core = { path = "core", version = "0.1.0" }
 forensicnomicon = "1"
 thiserror = "2"
+sha2 = "0.10"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
