@@ -40,11 +40,17 @@ fn superblock(part: &[u8]) -> Superblock {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(bytes);
     let d = h.finalize();
-    d.iter().map(|b| format!("{b:02x}")).collect()
+    let mut s = String::with_capacity(64);
+    for b in d {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 #[test]

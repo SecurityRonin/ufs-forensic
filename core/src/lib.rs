@@ -30,6 +30,7 @@ pub mod bytes;
 mod cg;
 mod dir;
 mod error;
+mod file;
 mod inode;
 mod superblock;
 
@@ -40,6 +41,7 @@ pub use dir::{
     DIR_ROUNDUP,
 };
 pub use error::UfsError;
+pub use file::{read_file, read_inode_file, read_path_content, read_symlink_target};
 pub use inode::{
     read_inode, FileType, Inode, Timespec, UFS1_DINODE_SIZE, UFS2_DINODE_SIZE, UFS_NDADDR,
     UFS_NIADDR,

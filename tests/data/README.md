@@ -82,6 +82,39 @@ open('ufs2_inodes_0_15.bin','wb').write(d[172032:172032+4096])"`.
   `core/tests/fixture.rs` and, on the full image, the env-gated
   `core/tests/dir_oracle.rs` (`list_dir` / `read_by_path` vs `fls` / `ffind`).
 
+### P3 file-content ground truth (`icat`) + synthetic indirect fixture
+
+**Real-image content oracle (Tier-1, `core/tests/file_oracle.rs`, env-gated on
+`UFS2_DFVFS_ORACLE`).** `read_file` / `read_path_content` assemble a file's bytes
+from its block map; the SHA-256 of the assembled bytes is checked against
+`icat -o 16 -f ufs2 ufs2.raw <ino> | sha256sum`:
+
+- inode **4** (`/passwords.txt`, 116 bytes): sha256
+  `02a2a6af2f1ecf4720d7d49d640f0d0a269a7ec733e41973bdd34f09dad0e252`.
+- inode **129** (`/a_directory/a_file`, 53 bytes): sha256
+  `4a49638d0e1055fd9e4c17fef7fdf4d6ccf892b6d9c2f64164203c4bfb0ec92d`.
+- inode **130** (`/a_directory/another_file`, 22 bytes): sha256
+  `c7fbc0e821c0871805a99584c6a384533909f68a6bbe9a2a687d28d9f3b10c16`.
+- inode **5** (`a_link`): a **fast (inline)** symlink; `read_symlink_target`
+  returns `a_directory/another_file` straight from the dinode (no data block).
+
+Every file in this image is a single direct block, so the image cannot exercise
+the single / double / triple **indirect** chains.
+
+**Synthetic indirect fixture (`core/tests/file_indirect.rs`, always-on, built at
+runtime — NOT committed).** There is no `mkfs.ufs`/`makefs` on the build host to
+mint a real large-file UFS2 image, so the test crafts a UFS2 partition in memory
+whose one file's block map spans 12 direct blocks + a full single-indirect block
++ into the double-indirect tree + one block reached only through the
+triple-indirect chain, plus a hole and a partial fragment tail. It is generated
+by `build()` in `core/tests/file_indirect.rs` (geometry: `bsize`=`fsize`=512,
+`frag`=1, `nindir`=64; deterministic content byte `(i*2654435761)&0xFF`). The
+oracle is two independent decoders agreeing on the crafted artifact: the known
+content pattern **and** a separately-written block-map walker (`independent_walk`)
+that re-reads the on-disk pointer blocks. Robustness cases (allocation-bomb
+`u64::MAX` di_size, truncation, lying pointer) are covered there and in the
+`core/src/file.rs` unit tests (which also drive the UFS1 4-byte-pointer path).
+
 ## UFS1 — deferred to a real image (NOT yet committed)
 
 The dfvfs corpus ships no UFS1 image, and Linux `mkfs` does not write UFS, so a

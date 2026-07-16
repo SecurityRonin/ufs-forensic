@@ -124,39 +124,36 @@ fn build() -> Built {
     // We collect (fragment_addr, Vec<u64> pointers) to write after allocation.
     let mut ind_blocks: Vec<(u64, Vec<u64>)> = Vec::new();
 
-    // single-indirect (di_ib[0]): points at data blocks [single_start .. double_start)
-    let single_ib = alloc();
-    {
+    // Fill a fresh NINDIR-pointer block: slot k → data_addr[base+k] while base+k
+    // is a real block index (and below `cap`); leftover slots stay 0 (holes).
+    let fill_ptrs = |base: usize, cap: usize| -> Vec<u64> {
         let mut ptrs = vec![0u64; NINDIR];
-        for k in 0..NINDIR {
-            let b = single_start + k;
-            if b < n_blocks {
-                ptrs[k] = data_addr[b];
+        for (k, slot) in ptrs.iter_mut().enumerate() {
+            let b = base + k;
+            if b < n_blocks && b < cap {
+                *slot = data_addr[b];
             }
         }
-        ind_blocks.push((single_ib, ptrs));
-    }
+        ptrs
+    };
+
+    // single-indirect (di_ib[0]): points at data blocks [single_start .. double_start)
+    let single_ib = alloc();
+    ind_blocks.push((single_ib, fill_ptrs(single_start, usize::MAX)));
 
     // double-indirect (di_ib[1]): a block of pointers to single-indirect blocks,
     // each covering NINDIR data blocks of [double_start .. triple_start).
     let double_ib = alloc();
     {
         let mut lvl1 = vec![0u64; NINDIR];
-        for s in 0..NINDIR {
+        for (s, l1) in lvl1.iter_mut().enumerate() {
             let seg_start = double_start + s * NINDIR;
             if seg_start >= n_blocks {
                 break;
             }
             let sib = alloc();
-            let mut ptrs = vec![0u64; NINDIR];
-            for k in 0..NINDIR {
-                let b = seg_start + k;
-                if b < n_blocks && b < triple_start {
-                    ptrs[k] = data_addr[b];
-                }
-            }
-            ind_blocks.push((sib, ptrs));
-            lvl1[s] = sib;
+            ind_blocks.push((sib, fill_ptrs(seg_start, triple_start)));
+            *l1 = sib;
         }
         ind_blocks.push((double_ib, lvl1));
     }
@@ -166,18 +163,10 @@ fn build() -> Built {
     let triple_ib = alloc();
     {
         let mut lvl1 = vec![0u64; NINDIR]; // pointers to double-indirect blocks
-                                           // first double-indirect block under the triple
         let dib = alloc();
         let mut lvl2 = vec![0u64; NINDIR]; // pointers to single-indirect blocks
-                                           // first single-indirect block under that double
         let sib = alloc();
-        let mut lvl3 = vec![0u64; NINDIR]; // pointers to data blocks
-        for k in 0..NINDIR {
-            let b = triple_start + k;
-            if b < n_blocks {
-                lvl3[k] = data_addr[b];
-            }
-        }
+        let lvl3 = fill_ptrs(triple_start, usize::MAX); // pointers to data blocks
         ind_blocks.push((sib, lvl3));
         lvl2[0] = sib;
         ind_blocks.push((dib, lvl2));
@@ -417,9 +406,12 @@ fn read_file_rejects_absurd_di_size_as_allocation_bomb() {
 #[test]
 fn read_file_truncated_partition_does_not_panic() {
     let mut b = build();
-    // Cut the partition mid-file: read_file must not panic; missing tail reads
-    // as zero (clamped by read_block), the length still equals di_size.
-    b.part.truncate(b.part.len() / 2);
+    // Cut the partition so its trailing data/indirect fragments fall off, while
+    // di_size still fits within the (now-shorter) partition so the allocation
+    // guard passes. read_file must not panic; the missing tail reads as zero
+    // (clamped by read_block) and the assembled length still equals di_size.
+    let cut = usize::try_from(b.file_size).unwrap(); // == di_size: guard's `>` passes
+    b.part.truncate(cut);
     let got = read_file(&b.part, &b.sb, 4).expect("truncated read is not an error");
     assert_eq!(got.len() as u64, b.file_size, "length still == di_size");
 }
