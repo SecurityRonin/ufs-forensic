@@ -60,7 +60,7 @@ pub fn write_superblock(part: &mut [u8], off: usize) {
     wr32(part, 56, FRAG);
     wr32(part, 80, 15); // bshift
     wr32(part, 84, 12); // fshift
-    wr32(part, 116, (BSIZE / 8)); // nindir (UFS2 8-byte pointers)
+    wr32(part, 116, BSIZE / 8); // nindir (UFS2 8-byte pointers)
     wr32(part, 120, 128); // inopb
     wr32(part, 184, IPG);
     wr32(part, 188, FPG);

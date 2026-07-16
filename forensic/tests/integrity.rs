@@ -64,7 +64,7 @@ fn clean_partition() -> Vec<u8> {
     let total = last_cg_end.max(last_itbl).max(root_data).max(65536 + 1376) + 4096;
     let mut part = vec![0u8; total];
 
-    write_superblock(&mut part, 0);
+    write_superblock(&mut part, common::SBLOCK_UFS2);
     for cg in 0..NCG as usize {
         // backup superblock for this cg at (cg*fpg + sblkno) frags.
         let sb_off = (cg * FPG as usize + SBLKNO as usize) * FSIZE as usize;
@@ -245,7 +245,7 @@ fn malformed_input_never_panics() {
     let mut part = clean_partition();
     part.truncate(70000); // cut mid-superblock
     let _ = audit_image(&part); // must not panic
-    // A partition with a valid-looking SB magic but nonsense everywhere else.
+                                // A partition with a valid-looking SB magic but nonsense everywhere else.
     let mut junk = vec![0xabu8; 200_000];
     let mag = 65536 + 1372;
     junk[mag..mag + 4].copy_from_slice(&0x1954_0119u32.to_le_bytes());
@@ -263,5 +263,7 @@ fn audit_findings_tags_analyzer_and_scope() {
         assert_eq!(f.source.analyzer, "ufs-forensic");
         assert_eq!(f.source.scope, "case-1/ufs2");
     }
-    assert!(findings.iter().any(|f| f.code == "UFS-SUPERBLOCK-MAGIC-INVALID"));
+    assert!(findings
+        .iter()
+        .any(|f| f.code == "UFS-SUPERBLOCK-MAGIC-INVALID"));
 }

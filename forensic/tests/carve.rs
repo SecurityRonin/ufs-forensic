@@ -74,7 +74,7 @@ fn build_deletion_case() -> DeletionCase {
     let total = last_cg_end.max(last_itbl).max(data_end).max(65536 + 1376) + 4096;
     let mut part = vec![0u8; total];
 
-    write_superblock(&mut part, 0);
+    write_superblock(&mut part, common::SBLOCK_UFS2);
     for cg in 0..NCG as usize {
         let sb_off = (cg * FPG as usize + SBLKNO as usize) * FSIZE as usize;
         write_superblock(&mut part, sb_off);
@@ -205,7 +205,7 @@ fn clean_partition_recovers_nothing() {
 fn malformed_input_recovers_nothing_without_panic() {
     assert!(recover_deleted(&[]).is_empty());
     assert!(recover_deleted(&[0u8; 16]).is_empty());
-    assert!(recover_deleted(&[0xffu8; 200_000]).is_empty());
+    assert!(recover_deleted(&vec![0xffu8; 200_000]).is_empty());
     let mut c = build_deletion_case();
     c.part.truncate(70000);
     let _ = recover_deleted(&c.part); // must not panic

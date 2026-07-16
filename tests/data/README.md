@@ -123,3 +123,54 @@ offsets are spec-derived (FreeBSD `sys/ufs/ffs/fs.h`) and are lifted to Tier-1
 in a follow-on against a real FreeBSD UFS1 image (or one minted on a FreeBSD VM
 with `newfs`), with TSK `-f ufs1` as the independent oracle. This is documented,
 not silently skipped.
+
+## `ufs-forensic` analyzer layer — F-INTEGRITY + F-CARVE
+
+**F-INTEGRITY (`forensic/tests/integrity.rs`).** Two tiers:
+
+- **Tier-1 (real image, env-gated `UFS2_DFVFS_ORACLE`):** the committed
+  `ufs2.raw` — a clean third-party UFS2 filesystem — must produce **no** false
+  anomalies (`audit_image` empty). This is the load-bearing "clean-emits-nothing"
+  proof.
+- **Tier-3 (crafted corruption, built at runtime — NOT committed):** a synthetic
+  UFS2 partition (`forensic/tests/common/mod.rs`, `clean_partition()`, geometry
+  mirroring the real image: `bsize` 32768, `fsize` 4096, `fpg` 256, `ipg` 128,
+  `sblkno` 24, `cblkno` 32, `iblkno` 40, 4 cylinder groups) into which exactly one
+  corruption is injected per case, so each `UFS-*` code fires on precisely its
+  trigger: a byte-flipped `fs_magic` (`UFS-SUPERBLOCK-MAGIC-INVALID`), a diverged
+  backup-superblock `fs_ipg` (`UFS-BACKUP-SUPERBLOCK-DIVERGENCE`), a bad `cg_magic`
+  (`UFS-CG-MAGIC-INVALID`), an allocated-but-unreferenced inode
+  (`UFS-ORPHANED-INODE`), and an `fs_ncg` whose last cg base lies past the image
+  (`UFS-IMPOSSIBLE-GEOMETRY`). These are detection-rule fixtures (correctness
+  defined by the spec + the rule), not value-producing decoders.
+
+**F-CARVE deletion oracle (`forensic/tests/carve.rs`, built at runtime — NOT
+committed).** The fresh `ufs2.raw` has no user deletions, so recovery cannot be
+exercised against it. Instead the test **crafts** a valid UFS2 partition with a
+known file `secret.txt` (inode 6, size 250, deterministic content byte
+`(i*2654435761)&0xFF`), records the content's SHA-256 **pre-delete**, then
+**simulates a UFS `rm`**: it zeroes the dirent's `d_ino` in the parent directory
+block (leaving the residual `d_name` in the reclen slack) AND clears inode 6's
+used-bit in the cg0 inode bitmap, leaving `di_size`/`di_db` and the data block
+INTACT — the classic residue a real UFS delete leaves. `recover_deleted`'s carved
+content is checked against the recorded pre-delete SHA-256, a
+construction-derived answer key independent of the reader, so a wrong carve cannot
+pass by matching a fixture encoded to the bug. Real-world recovery is
+state-dependent: it succeeds only while the freed dinode and data blocks are
+un-reallocated; the analyzer returns nothing rather than fabricate once the
+residue is gone.
+
+**Edge / defensive-arm coverage (`forensic/tests/edge.rs`, built at runtime).**
+Crafted adversarial partitions drive the panic-free guards a happy-path test never
+reaches: truncation past the primary superblock (cg headers/backup SBs off the
+end), an unparseable backup superblock, an allocated-in-bitmap inode with a zeroed
+or unreadable dinode (the false-orphan guards), a directory cycle, a subdirectory
+holding a deleted entry, an allocation-bomb `di_size` on a free inode, and a dir
+entry naming an out-of-range inode.
+
+<!-- TODO(corpus-catalog): the crafted UFS2 partitions above (F-INTEGRITY
+     corruption cases, the F-CARVE deletion oracle, and the edge cases) are built
+     at runtime and NOT committed; classify them SYNTHETIC in
+     issen/docs/corpus-catalog.md with their builder fn + file:line
+     (forensic/tests/common/mod.rs + forensic/tests/{integrity,carve,edge}.rs).
+     NOT done here — the issen repo is held by another session. -->
