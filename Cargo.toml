@@ -28,7 +28,7 @@ forensicnomicon = "1"
 # forensic-vfs (KNOWLEDGE leaf) — the read-only FileSystem navigation contract
 # the `vfs` feature adapts UfsFs onto. Optional; enabled by the `vfs` feature so
 # a bare reader stays dependency-light.
-forensic-vfs = "0.3"
+forensic-vfs = "0.4"
 thiserror = "2"
 sha2 = "0.10"
 
