@@ -1,0 +1,46 @@
+# release-plz owns crates.io publishing + changelogs + per-crate version bumps for
+# the workspace LIBRARIES — the reader `ufs-core` and the analyzer `ufs-forensic`.
+# It runs on pushes to main (see .github/workflows/release-plz.yml):
+#   - `release-pr`  opens a human-reviewed version-bump PR (conventional commits)
+#   - `release`     publishes any crate whose Cargo.toml version is ahead of
+#                   crates.io, in dependency order, and creates its git tag
+#
+# The `ufs-forensic-fuzz` member carries its own [workspace] and is not part of
+# this workspace, so release-plz never sees it. This repo ships no end-user binary.
+#
+# Note: the legacy root CHANGELOG.md is a manual workspace-level log. release-plz
+# maintains the per-crate core/CHANGELOG.md and forensic/CHANGELOG.md from here on.
+
+[workspace]
+# Per-package git tags, e.g. `ufs-core-v0.1.1`, `ufs-forensic-v0.1.0`. A
+# `<name>-v…` tag has a letter (not a digit) after the first `v`, so it never
+# collides with a `v[0-9]*` binary-release trigger.
+git_tag_enable = true
+# Library crates get a git tag + CHANGELOG entry, not a GitHub Release.
+git_release_enable = false
+changelog_update = true
+# The reader (ufs-core) and the analyzer (ufs-forensic) version independently.
+dependencies_update = false
+# Only prepare a release when a real change exists since the last one. This
+# allowlist makes feat/fix/perf/refactor/doc/revert the only release triggers;
+# chore/ci/test/style/build (incl. release-plz's own release commits) never prepare
+# a release (kills the changelog-churn loop).
+release_commits = "^(feat|fix|perf|refactor|doc|revert)"
+
+[changelog]
+commit_parsers = [
+    { message = "^chore\\(release\\):", skip = true },
+    { message = "^chore: release", skip = true },
+    { message = "^feat", group = "added" },
+    { message = "^fix", group = "fixed" },
+    { message = "^perf", group = "performance" },
+    { message = "^refactor", group = "other" },
+    { message = "^doc", group = "documentation" },
+    { message = "^revert", group = "other" },
+    { message = "^style", skip = true },
+    { message = "^test", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^build", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^.*", group = "other" },
+]
