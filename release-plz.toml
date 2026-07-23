@@ -15,6 +15,7 @@
 # Per-package git tags, e.g. `ufs-core-v0.1.1`, `ufs-forensic-v0.1.0`. A
 # `<name>-v…` tag has a letter (not a digit) after the first `v`, so it never
 # collides with a `v[0-9]*` binary-release trigger.
+git_tag_name = "{{ package }}-v{{ version }}"
 git_tag_enable = true
 # Library crates get a git tag + CHANGELOG entry, not a GitHub Release.
 git_release_enable = false
