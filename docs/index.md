@@ -40,7 +40,7 @@ Each finding is an **observation** ("consistent with …"); the examiner draws t
 | `UFS-IMPOSSIBLE-GEOMETRY` | High | A geometry field beyond what the image can hold — a corruption / allocation-bomb guard |
 | `UFS-ORPHANED-INODE` | Medium | An allocated inode reachable by no directory entry from root — an inode unlinked while open, or a corruption lead |
 
-Deleted-item recovery is separate: `recover_deleted(&partition)` sweeps every cylinder group's inode table for inodes that are **free** in the cg bitmap yet still carry an intact `di_mode`/`di_size`/`di_db`, re-assembles their content, and walks the directory tree for `d_ino == 0` slots whose residual `d_name` survives. It returns each carved `RecoveredItem` — a `DeletedFile` (name, inode, size, content, and the content's sha256 recovery gate; conceptually `UFS-DELETED-FILE-CARVED`) or a `DeletedDirent` (residual name + inode; conceptually `UFS-DELETED-DIRENT`).
+Deleted-item recovery is separate: `recover_deleted(&partition)` sweeps every cylinder group's inode table for inodes that are **free** in the cg bitmap yet still carry an intact `di_mode`/`di_size`/`di_db`, re-assembles their content, and walks the directory tree for `d_ino == 0` slots whose residual `d_name` survives. It returns each carved `RecoveredItem` — a `DeletedFile` (name, inode, size, content, and the content's sha256 — a provenance stamp validated against an independent pre-delete hash, not a runtime gate; conceptually `UFS-DELETED-FILE-CARVED`) or a `DeletedDirent` (residual name + inode; conceptually `UFS-DELETED-DIRENT`).
 
 ## The reader: navigate an image
 

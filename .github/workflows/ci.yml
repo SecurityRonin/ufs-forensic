@@ -55,8 +55,9 @@ jobs:
   msrv:
     # ufs-core is a published library; its MSRV is a downstream-facing promise.
     # The floor is 1.75 — ufs-core's own code compiles there (only thiserror in
-    # the prod tree, no zstd/crc dep to raise it), and ufs-forensic (forensicnomicon
-    # + sha2) compiles there too. An explicit version ref sets RUSTUP_TOOLCHAIN,
+    # the prod tree, no zstd/crc dep to raise it). This job verifies ONLY ufs-core
+    # at 1.75; ufs-forensic (forensicnomicon + sha2) is expected to build there but
+    # is not compiled by this job. An explicit version ref sets RUSTUP_TOOLCHAIN,
     # which beats rust-toolchain.toml's pin.
     name: MSRV (1.75)
     runs-on: ubuntu-latest

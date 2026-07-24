@@ -555,7 +555,8 @@ pub enum RecoveredItem {
         size: u64,
         /// The carved file content (assembled from the surviving block map).
         content: Vec<u8>,
-        /// The carved content's sha256, lower-hex (the recovery gate).
+        /// The carved content's sha256, lower-hex — a provenance stamp checked
+        /// against an independent pre-delete hash in validation, not a runtime gate.
         content_sha256: String,
     },
     /// A deleted directory entry recovered from a `d_ino == 0` slot (or residual

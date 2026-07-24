@@ -7,10 +7,11 @@ members = ["core", "forensic"]
 # each keeps its own `version` inline.
 [workspace.package]
 edition = "2021"
-# CI-verified MSRV floor. Both crates compile as low as 1.75: ufs-core's prod
-# tree is only `thiserror` (no zstd/crc dep to raise it), and ufs-forensic's
-# `forensicnomicon` + `sha2` build there too. Kept low as a downstream-facing
-# promise for the published library (the `msrv` CI job pins 1.75.0).
+# Declared MSRV floor, kept low as a downstream-facing promise. ufs-core's 1.75 is
+# CI-verified: the `msrv` job pins 1.75.0 and runs `cargo build -p ufs-core`, whose
+# prod tree is only `thiserror` (no zstd/crc dep to raise it). ufs-forensic's floor
+# is asserted, not CI-exercised — its `forensicnomicon` + `sha2` deps are expected
+# to build at 1.75, but the msrv job does not compile ufs-forensic.
 rust-version = "1.75"
 license = "Apache-2.0"
 repository = "https://github.com/SecurityRonin/ufs-forensic"
