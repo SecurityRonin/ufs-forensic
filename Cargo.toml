@@ -24,7 +24,7 @@ readme = "README.md"
 # members write `dep.workspace = true`. The inter-crate `ufs-core` version
 # lives here too, so a bump touches one line instead of every member.
 [workspace.dependencies]
-ufs-core = { path = "core", version = "0.1.0" }
+ufs-core = { path = "core", version = "0.1.5" }
 forensicnomicon = "1"
 # forensic-vfs (KNOWLEDGE leaf) — the read-only FileSystem navigation contract
 # the `vfs` feature adapts UfsFs onto. Optional; enabled by the `vfs` feature so
