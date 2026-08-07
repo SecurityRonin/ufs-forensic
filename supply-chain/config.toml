@@ -54,10 +54,6 @@ criteria = "safe-to-deploy"
 version = "1.0.107"
 criteria = "safe-to-deploy"
 
-[[exemptions.quote]]
-version = "1.0.47"
-criteria = "safe-to-deploy"
-
 [[exemptions.sha2]]
 version = "0.10.9"
 criteria = "safe-to-deploy"
