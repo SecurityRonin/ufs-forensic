@@ -1,4 +1,4 @@
-/target
+target/
 
 # Cargo.lock IS committed: CI must resolve the exact dependency graph rather
 # than a fresh resolution that could pull a license-tainted or edition-
