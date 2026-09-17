@@ -59,17 +59,47 @@ fn partition() -> Option<Vec<u8>> {
     std::fs::read(&p).ok()
 }
 
-/// Skip loudly: a silent skip is indistinguishable from a pass, and that is how
-/// an oracle-gated test quietly stops running for a year.
+/// Announce a skip on the PROCESS's real stderr, bypassing libtest's capture.
+///
+/// `eprintln!` is not enough and that is the whole point of this function. The
+/// test harness captures stdout/stderr per test and prints it only for FAILING
+/// tests, so a skip notice from a passing test is swallowed: a default
+/// `cargo test` run with no oracle prints `6 passed` and nothing else, which is
+/// indistinguishable from six real validations. That is exactly how an
+/// oracle-gated test quietly stops running for a year.
+///
+/// Opening `/dev/stderr` reaches the real file descriptor rather than the
+/// harness's thread-local buffer, so the notice is visible in a normal run. It
+/// needs no `unsafe`, which matters in a crate that forbids it. If the open
+/// fails (a platform without `/dev/stderr`), fall back to `eprintln!` — a
+/// captured notice beats none.
+fn announce_skip(msg: &str) {
+    use std::io::Write;
+    use std::sync::Once;
+    // Once, not per test: the six tests run in parallel, and six unsynchronised
+    // writes to one fd interleave into an unreadable smear. One clear line is
+    // the point; six garbled ones are noise nobody reads, which is the failure
+    // this function exists to prevent wearing a different hat.
+    static ANNOUNCED: Once = Once::new();
+    ANNOUNCED.call_once(|| {
+        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open("/dev/stderr") {
+            if writeln!(f, "\n{msg}\n").is_ok() {
+                return;
+            }
+        }
+        eprintln!("{msg}");
+    });
+}
+
 macro_rules! oracle {
     () => {
         match partition() {
             Some(p) => p,
             None => {
-                eprintln!(
+                announce_skip(
                     "SKIPPED: set UFS2_FREEBSD15_ORACLE to the extracted freebsd-ufs.part \
                      (see tests/data/README.md for the download URL, vendor SHA256 and \
-                     extraction offsets)"
+                     extraction offsets)",
                 );
                 return;
             }
