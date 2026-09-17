@@ -57,3 +57,6 @@ workspace = true
 
 [[test]]
 name = "xattr"
+
+[[test]]
+name = "tier1_freebsd15"

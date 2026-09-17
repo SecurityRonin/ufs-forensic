@@ -231,3 +231,72 @@ entry naming an out-of-range inode.
 - **MD5 (gz):** `c674bb2673b03e156983b7f8a5f52ac6`
 - **MD5 (raw):** `55ac8c3df18a6c268c05d5e390b62c64`
 - **Used by:** `core/tests/xattr.rs`
+
+### FreeBSD 15.0-RELEASE `freebsd-ufs` root partition — `REAL-ext` (**Tier-1**)
+
+- **Class:** `REAL-ext` (**Tier-1 on both axes**). A vendor-authored UFS2 root
+  filesystem, validated against an independent implementation. Every other UFS
+  fixture in this repo is self-minted (Tier-2): real bytes, but written by a
+  `newfs` in this project and checked against ground truth this project recorded,
+  which cannot catch a format misunderstanding the minting command and the reader
+  happen to share.
+- **Artifact:** the `freebsd-ufs` GPT partition (partition 4, `rootfs`, 5 `GiB`)
+  of the official `FreeBSD` 15.0-RELEASE arm64 cloud image, built by `FreeBSD`
+  release engineering (`last modified time Fri Nov 28 04:11:25 2025`). Nothing in
+  this project authored a byte of it.
+- **Source:** <https://download.freebsd.org/releases/VM-IMAGES/15.0-RELEASE/aarch64/Latest/FreeBSD-15.0-RELEASE-arm64-aarch64-BASIC-CLOUDINIT-ufs.qcow2.xz>
+  — vendor-published **SHA256**
+  `e8bacaa565d5959a7408b4670947e544551ba26a4d726c04f48d025647a0cd35`
+  (from that directory's `CHECKSUM.SHA256`), ~558 `MiB`. **Verified before
+  extraction**, and re-verified after moving the file.
+- **Extraction (verbatim):**
+
+  ```bash
+  xz -dk FreeBSD-15.0-RELEASE-arm64-aarch64-BASIC-CLOUDINIT-ufs.qcow2.xz
+  qemu-img convert -O raw FreeBSD-...-ufs.qcow2 pristine.raw      # 6,477,643,776 B
+  # GPT partition 4 = freebsd-ufs, LBA 2165818..12651577
+  dd if=pristine.raw of=freebsd-ufs.part bs=512 \
+     skip=2165818 count=10485760
+  ```
+
+  Partition offset **1108898816** bytes, size **5368709120** bytes.
+  **The offset is NOT `MiB`-aligned** (1108898816 / 1048576 = 1057.53), so a
+  `bs=1m skip=1057` extraction silently produces a file of the *correct size* and
+  *wrong content* — it happened here, and was caught only because the UFS2 magic
+  at `+65536+1372` read `0x00000000` instead of `0x19540119`. macOS `dd` has no
+  GNU `iflag=skip_bytes`; use `bs=512` with an LBA skip, or extract in `python3`.
+
+- **md5 of the extracted partition:** `918fcd06e4a38de368568575dc531f1e`
+- **Not committed** (5 `GiB`). Env-gated on **`UFS2_FREEBSD15_ORACLE`**; the
+  tests skip loudly when it is unset.
+- **Independent oracle — the `FreeBSD` kernel's own UFS driver.** The partition
+  was attached read-only to a `FreeBSD` 15.0 guest and mounted `-o ro`; geometry
+  from `dumpfs`, contents from `sha256`, metadata from `stat`, symlink targets
+  from `readlink`. `file -s` independently identifies it as
+  `Unix Fast File system [v2] (little-endian) ... volume name rootfs`.
+- **Scale:** 38,977 files, 2,331 directories, 1,361 symlinks.
+- **Ground truth asserted** (`core/tests/tier1_freebsd15.rs`):
+
+  | inode | path | size | why it is in the set |
+  |---|---|---|---|
+  | 962 | `/etc/fstab` | 215 | single fragment |
+  | 1013 | `/etc/rc.conf` | 247 | direct blocks only |
+  | 983 | `/etc/motd.template` | 849 | direct blocks only |
+  | 3 | `/COPYRIGHT` | 6,070 | **not** a block multiple — fragment tail |
+  | 1586 | `/lib/libcrypto.so.35` | 5,070,200 | indirect blocks |
+  | 562 | `/boot/kernel/kernel` | 18,838,832 | 48× the 393,216 B direct limit |
+
+  Plus: `dumpfs` geometry (`bsize 32768`, `fsize 4096`, `ipg 80256`,
+  `fpg 160336`, `iblkno 40`); the full root listing (18 entries); `/etc`
+  enumerating all 103 entries; inode 1668 carrying **`nlink` = 146**
+  (the `/rescue` hard-link group); and three inline symlink targets.
+
+- **Does NOT validate extended attributes.** A stock `FreeBSD` install sets
+  none — a scan of the first 3,000 files found **0** `user`-namespace
+  attributes. The xattr decoder remains validated by `ufs2_xattr.img.gz` below,
+  which is Tier-2 by construction.
+- **Three-way control run** (`engineering-execution-discipline`): oracle present
+  → 6 pass in 8.67 s; **one byte flipped** inside inode 3's first data block →
+  `inode 3 content sha256` FAILS; oracle absent → skips loudly in ~0 s.
+- **Redistribution:** freely re-downloadable from the vendor URL; not
+  redistributed here.
