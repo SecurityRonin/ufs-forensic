@@ -49,7 +49,7 @@
 
 use std::io::Read;
 
-use ufs::{list_xattrs, Superblock, UfsNamespace};
+use ufs::{list_xattrs, Superblock, UfsNamespace, SBLOCK_UFS2};
 
 /// Inode numbers from `stat -f %i` in the minting VM.
 const FILE_INO: u64 = 4;
@@ -65,7 +65,7 @@ fn image() -> Vec<u8> {
 }
 
 fn attrs(img: &[u8], ino: u64) -> Vec<(UfsNamespace, String, usize)> {
-    let sb = Superblock::parse(img).expect("fixture must parse as UFS2");
+    let sb = Superblock::parse(&img[SBLOCK_UFS2..]).expect("fixture must parse as UFS2");
     list_xattrs(img, &sb, ino)
         .expect("listing must not error")
         .into_iter()
@@ -103,7 +103,7 @@ fn every_attribute_is_listed_with_its_namespace() {
 #[test]
 fn values_are_byte_exact() {
     let img = image();
-    let sb = Superblock::parse(&img).unwrap();
+    let sb = Superblock::parse(&img[SBLOCK_UFS2..]).unwrap();
     let list = list_xattrs(&img, &sb, FILE_INO).unwrap();
     let get = |n: &str| -> Vec<u8> {
         list.iter()
@@ -130,7 +130,7 @@ fn directories_carry_attributes() {
     assert_eq!(a[0].1, "ondir");
     assert_eq!(a[0].0, UfsNamespace::User);
 
-    let sb = Superblock::parse(&img).unwrap();
+    let sb = Superblock::parse(&img[SBLOCK_UFS2..]).unwrap();
     let list = list_xattrs(&img, &sb, DIR_INO).unwrap();
     assert_eq!(list[0].value, b"on-a-directory");
 }
@@ -139,10 +139,12 @@ fn directories_carry_attributes() {
 #[test]
 fn an_inode_without_an_extattr_area_lists_nothing() {
     let img = image();
-    let sb = Superblock::parse(&img).unwrap();
+    let sb = Superblock::parse(&img[SBLOCK_UFS2..]).unwrap();
     // The root directory was given no attributes.
     assert!(
-        list_xattrs(&img, &sb, 2).expect("no extattr area is not an error").is_empty(),
+        list_xattrs(&img, &sb, 2)
+            .expect("no extattr area is not an error")
+            .is_empty(),
         "the root directory has di_extsize == 0"
     );
 }

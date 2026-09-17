@@ -33,6 +33,8 @@ mod error;
 mod file;
 mod inode;
 mod superblock;
+pub mod xattr;
+pub use xattr::{list_xattrs, UfsNamespace, Xattr};
 #[cfg(feature = "vfs")]
 pub mod vfs;
 

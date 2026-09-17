@@ -50,6 +50,10 @@ const U2_MTIMENSEC: usize = 64;
 const U2_ATIMENSEC: usize = 68;
 const U2_CTIMENSEC: usize = 72;
 const U2_BIRTHNSEC: usize = 76;
+/// `di_extsize` — byte length of the extended-attribute area (UFS2 only).
+const U2_EXTSIZE: usize = 92;
+/// `di_extb[2]` — the two fragment addresses holding that area (UFS2 only).
+const U2_EXTB: usize = 96;
 const U2_DB: usize = 112;
 const U2_IB: usize = 208;
 
@@ -161,6 +165,17 @@ pub struct Inode {
     pub ctime: Timespec,
     /// `di_birthtime` — inode creation time (UFS2 only; `None` on UFS1).
     pub birthtime: Option<Timespec>,
+    /// `di_extsize` — byte length of the extended-attribute area.
+    ///
+    /// Always 0 on UFS1, which has no extattr area at all. A UFS2 inode with no
+    /// extended attributes also reads 0, and the two are indistinguishable here
+    /// by design: neither has attributes.
+    pub extsize: u32,
+    /// `di_extb[2]` — fragment addresses of the extended-attribute area.
+    ///
+    /// Two pointers, so an attribute area may span two fragments-runs. Zero on
+    /// UFS1.
+    pub extb: [i64; 2],
     /// `di_db[UFS_NDADDR]` — direct block pointers (fragment addresses). For a
     /// fast (inline) symlink these bytes hold the target instead — see
     /// [`Self::symlink_target`].
@@ -313,6 +328,16 @@ impl Inode {
             None
         };
 
+        // The extattr area exists only on UFS2; a UFS1 inode's bytes at these
+        // offsets are di_db/di_ib, so reading them would invent an area.
+        let (extsize, extb) = match version {
+            UfsVersion::Ufs2 => (
+                endian.u32(data, U2_EXTSIZE),
+                [endian.i64(data, U2_EXTB), endian.i64(data, U2_EXTB + 8)],
+            ),
+            UfsVersion::Ufs1 => (0, [0, 0]),
+        };
+
         Ok(Self {
             version,
             mode,
@@ -326,6 +351,8 @@ impl Inode {
             mtime,
             ctime,
             birthtime,
+            extsize,
+            extb,
             direct,
             indirect,
             fast_symlink,

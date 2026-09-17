@@ -42,8 +42,8 @@
 use forensic_vfs::{
     Allocation, ByteRun, Confidence, DirEntry as VfsDirEntry, DirStream, DynSource, ExtentStream,
     FileId, FileSystem, FsKind, FsMeta, MacbTimes, NodeKind, NodeStream, ResidencyKind, RunAlloc,
-    RunFlags, RunInfo, SectorSizes, SmallHex, SniffWindow, StreamId, TimeResolution, TimeSource,
-    TimeStamp, TimeZonePolicy, VfsError, VfsResult,
+    RunFlags, RunInfo, SectorSizes, SmallHex, SniffWindow, StreamId, StreamInfo, StreamKind,
+    TimeResolution, TimeSource, TimeStamp, TimeZonePolicy, VfsError, VfsResult,
 };
 
 use crate::dir::list_dir;
@@ -329,9 +329,65 @@ impl FileSystem for UfsFs {
         })
     }
 
-    fn read_at(&self, ino: FileId, stream: StreamId, off: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        require_default_stream(stream)?;
+    /// The file's contents, plus one entry per extended attribute.
+    ///
+    /// Attributes are reported under their namespace-qualified name
+    /// (`user.small`, `system.sattr`) — UFS2 stores the bare name and the
+    /// namespace separately, and dropping the namespace would hide whether an
+    /// attribute was settable by the owner or only by root.
+    ///
+    /// All are `Resident`: a UFS2 attribute lives in the inode's own extattr
+    /// area, and there is no out-of-line form to distinguish.
+    fn data_streams(&self, ino: FileId) -> VfsResult<Vec<StreamInfo>> {
         let inode_no = ino_of(ino)?;
+        let inode = read_inode(&self.image, &self.sb, inode_no).map_err(map_err)?;
+        let mut out = vec![StreamInfo {
+            id: StreamId::Default,
+            name: None,
+            size: inode.size,
+            residency: ResidencyKind::NonResident,
+            kind: StreamKind::Data,
+        }];
+        let attrs = crate::list_xattrs(&self.image, &self.sb, inode_no).map_err(map_err)?;
+        for (i, x) in attrs.iter().enumerate() {
+            // An unrecognised namespace byte yields no qualified name; the
+            // attribute is still LISTED, because its presence is evidence even
+            // when its namespace cannot be named.
+            let name = x
+                .full_name()
+                .unwrap_or_else(|| format!("unknown.{}", x.name));
+            out.push(StreamInfo {
+                id: StreamId::Xattr(u16::try_from(i).unwrap_or(u16::MAX)),
+                name: Some(name.into_bytes()),
+                size: x.value.len() as u64,
+                residency: ResidencyKind::Resident {
+                    inline_len: u32::try_from(x.value.len()).unwrap_or(u32::MAX),
+                },
+                kind: StreamKind::Xattr,
+            });
+        }
+        Ok(out)
+    }
+
+    fn read_at(&self, ino: FileId, stream: StreamId, off: u64, buf: &mut [u8]) -> VfsResult<usize> {
+        let inode_no = ino_of(ino)?;
+        // Attributes are dispatched BEFORE the default-stream guard: that guard
+        // refuses stream kinds UFS2 does not have, and attributes are one it does.
+        if let StreamId::Xattr(idx) = stream {
+            let all = crate::list_xattrs(&self.image, &self.sb, inode_no).map_err(map_err)?;
+            let x = all.get(idx as usize).ok_or_else(|| VfsError::Unsupported {
+                layer: "ufs xattr index",
+                scheme: format!("attribute {idx} of {}", all.len()),
+            })?;
+            let start = usize::try_from(off).unwrap_or(usize::MAX);
+            let Some(slice) = x.value.get(start..) else {
+                return Ok(0);
+            };
+            let n = slice.len().min(buf.len());
+            buf[..n].copy_from_slice(&slice[..n]);
+            return Ok(n);
+        }
+        require_default_stream(stream)?;
         // ufs-core exposes only whole-file reconstruction; window its result to
         // [off, off+buf.len()). A start past EOF reads zero bytes (never panics).
         let file = read_file(&self.image, &self.sb, inode_no).map_err(map_err)?;
