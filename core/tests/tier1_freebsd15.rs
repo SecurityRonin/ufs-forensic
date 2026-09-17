@@ -32,8 +32,10 @@
 //!
 //! ## Env-gated
 //!
-//! The partition is 5 `GiB`, so it is not committed. Set `UFS2_FREEBSD15_ORACLE`
-//! to the extracted `freebsd-ufs.part`; the tests skip loudly when it is absent.
+//! The partition is 5 `GiB`, so it is gitignored rather than committed — it lives
+//! at `tests/data/freebsd-ufs.part`, beside the tests that read it, and is found
+//! there with no environment set. `UFS2_FREEBSD15_ORACLE` overrides the path.
+//! The tests skip loudly when it is absent.
 //! `tests/data/README.md` records the download URL, the vendor checksum, the
 //! exact extraction offsets and the md5 of the result.
 //!
@@ -51,8 +53,22 @@ use std::path::PathBuf;
 use ufs::{list_dir, read_file, read_inode, Superblock, SBLOCK_UFS2};
 
 /// The extracted `freebsd-ufs` partition, or `None` to skip.
+///
+/// Resolves `UFS2_FREEBSD15_ORACLE` first, then falls back to the repo's own
+/// `tests/data/freebsd-ufs.part`. The fallback is the normal case: the artifact
+/// lives beside the tests that read it and is kept out of git by extension
+/// (see `.gitignore`), so a checkout that has run the extraction needs no
+/// environment at all. The env var stays for a corpus parked elsewhere.
 fn partition() -> Option<Vec<u8>> {
-    let p = PathBuf::from(std::env::var("UFS2_FREEBSD15_ORACLE").ok()?);
+    let p = std::env::var("UFS2_FREEBSD15_ORACLE").map_or_else(
+        |_| {
+            let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            d.pop(); // core/ -> repo root
+            d.push("tests/data/freebsd-ufs.part");
+            d
+        },
+        PathBuf::from,
+    );
     if !p.exists() {
         return None;
     }

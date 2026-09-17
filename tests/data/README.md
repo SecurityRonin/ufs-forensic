@@ -267,8 +267,14 @@ entry naming an out-of-range inode.
   GNU `iflag=skip_bytes`; use `bs=512` with an LBA skip, or extract in `python3`.
 
 - **md5 of the extracted partition:** `918fcd06e4a38de368568575dc531f1e`
-- **Not committed** (5 `GiB`). Env-gated on **`UFS2_FREEBSD15_ORACLE`**; the
-  tests skip loudly when it is unset.
+- **Gitignored, not absent** (5 `GiB`). It lives right here as
+  `tests/data/freebsd-ufs.part`, beside the tests that read it, kept out of git
+  by extension (`/tests/data/*.part`, `*.qcow2.xz`, `FreeBSD-*` in
+  `.gitignore` — deliberately narrow, since this repo DOES commit `ufs2.raw` and
+  `ufs2_xattr.img.gz`). The vendor `.xz` sits beside it as the provenance root.
+  Tests find the partition with **no environment set**;
+  **`UFS2_FREEBSD15_ORACLE`** overrides the path for a corpus parked elsewhere,
+  and they skip loudly when it is missing.
 - **Independent oracle — the `FreeBSD` kernel's own UFS driver.** The partition
   was attached read-only to a `FreeBSD` 15.0 guest and mounted `-o ro`; geometry
   from `dumpfs`, contents from `sha256`, metadata from `stat`, symlink targets

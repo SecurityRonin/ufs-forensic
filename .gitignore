@@ -6,11 +6,24 @@ target/
 # (Downstream library consumers still resolve their own graph — a committed lock
 # does not constrain them.)
 
-# The 4 MiB dfvfs UFS2 Tier-1 oracle image (tests/data/ufs2.raw) and its small
-# extracted fixtures (ufs2_*.bin) ARE committed — they are well under the ~10 MiB
-# crates.io tarball limit and are excluded from the published .crate anyway (see
-# forensic/Cargo.toml `exclude`). Any larger, re-downloadable UFS1 corpus added
-# later should be gitignored here.
+# The 4 MiB dfvfs UFS2 Tier-1 oracle image (tests/data/ufs2.raw), its small
+# extracted fixtures (ufs2_*.bin) and the minted xattr image (ufs2_xattr.img.gz)
+# ARE committed — all well under the ~10 MiB crates.io tarball limit and excluded
+# from the published .crate anyway (see forensic/Cargo.toml `exclude`).
+#
+# Large, re-downloadable corpora live in tests/data/ too — the fleet convention
+# (docs/test-corpus-standard.md, and zfs-forensic/.gitignore) is that the data
+# sits beside the tests that read it and is kept out of git by EXTENSION, not by
+# living somewhere else on the machine. A path outside the repo goes stale, and
+# nothing points at it.
+#
+# The patterns below are deliberately NARROW. zfs-forensic can ignore *.raw and
+# *.img wholesale because it commits none; this repo commits ufs2.raw and
+# ufs2_xattr.img.gz, so those globs would be actively wrong here.
+/tests/data/*.part
+/tests/data/*.qcow2
+/tests/data/*.qcow2.xz
+/tests/data/FreeBSD-*
 
 # OS / editor cruft (belt-and-suspenders alongside a machine-wide core.excludesfile).
 .DS_Store
