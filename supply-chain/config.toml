@@ -34,6 +34,11 @@ criteria = "safe-to-deploy"
 version = "0.2.17"
 criteria = "safe-to-deploy"
 
+[[exemptions.crc32fast]]
+version = "1.5.2"
+criteria = "safe-to-run"
+notes = "test-only: reached only through dev-dependencies of ufs-core; not shipped. Unreviewed; added 2026-11-12."
+
 [[exemptions.crypto-common]]
 version = "0.1.7"
 criteria = "safe-to-deploy"
@@ -41,6 +46,11 @@ criteria = "safe-to-deploy"
 [[exemptions.digest]]
 version = "0.10.7"
 criteria = "safe-to-deploy"
+
+[[exemptions.flate2]]
+version = "1.1.10"
+criteria = "safe-to-run"
+notes = "test-only: reached only through dev-dependencies of ufs-core; not shipped. Unreviewed; added 2026-11-12."
 
 [[exemptions.generic-array]]
 version = "0.14.7"
@@ -50,6 +60,11 @@ criteria = "safe-to-deploy"
 version = "0.2.186"
 criteria = "safe-to-deploy"
 
+[[exemptions.miniz_oxide]]
+version = "0.9.1"
+criteria = "safe-to-run"
+notes = "test-only: reached only through dev-dependencies of ufs-core; not shipped. Unreviewed; added 2026-11-12."
+
 [[exemptions.proc-macro2]]
 version = "1.0.107"
 criteria = "safe-to-deploy"
@@ -57,6 +72,11 @@ criteria = "safe-to-deploy"
 [[exemptions.sha2]]
 version = "0.10.9"
 criteria = "safe-to-deploy"
+
+[[exemptions.simd-adler32]]
+version = "0.3.10"
+criteria = "safe-to-run"
+notes = "test-only: reached only through dev-dependencies of ufs-core; not shipped. Unreviewed; added 2026-11-12."
 
 [[exemptions.syn]]
 version = "3.0.2"
@@ -81,3 +101,8 @@ criteria = "safe-to-deploy"
 [[exemptions.version_check]]
 version = "0.9.5"
 criteria = "safe-to-deploy"
+
+[[exemptions.zlib-rs]]
+version = "0.6.8"
+criteria = "safe-to-run"
+notes = "test-only: reached only through dev-dependencies of ufs-core; not shipped. Unreviewed; added 2026-11-12."

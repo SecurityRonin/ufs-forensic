@@ -29,7 +29,6 @@ forensicnomicon = "1"
 # forensic-vfs (KNOWLEDGE leaf) — the read-only FileSystem navigation contract
 # the `vfs` feature adapts UfsFs onto. Optional; enabled by the `vfs` feature so
 # a bare reader stays dependency-light.
-forensic-vfs = "0.9"
 thiserror = "2"
 sha2 = "0.10"
 
@@ -56,7 +55,3 @@ items_after_statements   = { level = "allow", priority = 1 }
 similar_names            = { level = "allow", priority = 1 }
 manual_let_else          = { level = "allow", priority = 1 }
 
-# TEMPORARY, remove before publish: StreamKind::Data landed on forensic-vfs main
-# and is not yet on crates.io.
-[patch.crates-io]
-forensic-vfs = { path = "../forensic-vfs/crates/core" }

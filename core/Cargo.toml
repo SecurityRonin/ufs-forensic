@@ -46,7 +46,7 @@ thiserror = { workspace = true }
 # forensic-vfs (KNOWLEDGE leaf) — the read-only FileSystem navigation contract.
 # Optional; enabled by the `vfs` feature which turns on `impl FileSystem for
 # UfsFs` so a UFS volume composes as `Arc<dyn FileSystem>`.
-forensic-vfs = { workspace = true, optional = true }
+forensic-vfs = { version = "0.10", optional = true }
 
 [dev-dependencies]
 flate2 = "1"
