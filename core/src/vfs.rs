@@ -730,6 +730,84 @@ mod tests {
         UfsFs::open(&(StdArc::new(Bytes(image)) as DynSource)).unwrap()
     }
 
+    /// The FreeBSD-minted UFS2 image with extended attributes
+    /// (`tests/data/ufs2_xattr.img.gz`; ground truth from `getextattr` through
+    /// the FreeBSD kernel, see `tests/data/README.md`). `file.txt` is inode 4.
+    fn xattr_image() -> Vec<u8> {
+        use std::io::Read;
+        let gz = include_bytes!("../../tests/data/ufs2_xattr.img.gz");
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(&gz[..])
+            .read_to_end(&mut out)
+            .expect("fixture must decompress");
+        out
+    }
+
+    #[test]
+    fn data_streams_and_read_at_serve_the_freebsd_written_attributes() {
+        let fs = mount(xattr_image());
+        let file = FileId::Opaque(4);
+        let streams = fs.data_streams(file).expect("data_streams");
+        assert!(matches!(streams[0].id, StreamId::Default));
+        assert_eq!(streams[0].size, 18, "file.txt holds 'hello ufs2 xattrs\\n'");
+        let read = |name: &str| -> Vec<u8> {
+            let s = streams
+                .iter()
+                .find(|s| s.name.as_deref() == Some(name.as_bytes()))
+                .unwrap_or_else(|| panic!("no attribute {name}: {streams:?}"));
+            assert!(matches!(s.kind, StreamKind::Xattr));
+            let mut buf = vec![0u8; usize::try_from(s.size).unwrap()];
+            let n = fs.read_at(file, s.id, 0, &mut buf).expect("read_at");
+            buf.truncate(n);
+            buf
+        };
+        assert_eq!(read("user.small"), b"tiny-value");
+        assert_eq!(read("user.comment"), b"a second attribute");
+        assert_eq!(read("system.sattr"), b"system-namespace-value");
+        assert_eq!(read("user.big"), vec![b'B'; 4000]);
+        // An offset past the value reads nothing; an index past the list is an
+        // error naming both.
+        let small = streams
+            .iter()
+            .find(|s| s.name.as_deref() == Some(b"user.small".as_slice()))
+            .unwrap();
+        let mut buf = [0u8; 4];
+        assert_eq!(fs.read_at(file, small.id, 99, &mut buf).unwrap(), 0);
+        let count = streams.len() - 1;
+        let err = fs
+            .read_at(file, StreamId::Xattr(99), 0, &mut buf)
+            .expect_err("there is no attribute 99");
+        assert!(
+            err.to_string()
+                .contains(&format!("attribute 99 of {count}")),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_attribute_in_an_unknown_namespace_is_listed_not_dropped() {
+        // Record layout: ea_length(4) ns(1) padlen(1) namelen(1) name. Relabel
+        // the one "small" record (ns 1 = user, namelen 5) to namespace 9.
+        let mut img = xattr_image();
+        let hits: Vec<usize> = img
+            .windows(5)
+            .enumerate()
+            .filter(|(i, w)| *w == b"small" && *i >= 3 && img[i - 1] == 5 && img[i - 3] == 1)
+            .map(|(i, _)| i - 3)
+            .collect();
+        assert_eq!(hits.len(), 1, "exactly one user.small record: {hits:?}");
+        img[hits[0]] = 9;
+        let fs = mount(img);
+        let names: Vec<Vec<u8>> = fs
+            .data_streams(FileId::Opaque(4))
+            .unwrap()
+            .into_iter()
+            .filter_map(|s| s.name)
+            .collect();
+        assert!(names.contains(&b"unknown.small".to_vec()), "{names:?}");
+        assert!(!names.contains(&b"user.small".to_vec()), "{names:?}");
+    }
+
     #[test]
     fn open_rejects_non_ufs_source_loud() {
         // UfsFs holds the whole image and intentionally derives no Debug (so an

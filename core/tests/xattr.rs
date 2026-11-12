@@ -148,3 +148,41 @@ fn an_inode_without_an_extattr_area_lists_nothing() {
         "the root directory has di_extsize == 0"
     );
 }
+
+/// Byte offset of inode 4 (`file.txt`) in the fixture: cylinder group 0,
+/// `iblkno` 40, `fsize` 4096 (dumpfs), 256-byte UFS2 dinodes. Its `di_extsize`
+/// is at +92 and `di_extb[0]` at +96 (inode.rs `U2_EXTSIZE`, `U2_EXTB`).
+const FILE_INODE_AT: usize = 40 * 4096 + 4 * 256;
+
+fn with_extb0(value: i64) -> Vec<u8> {
+    let mut img = image();
+    let extb0 = FILE_INODE_AT + 96;
+    assert_eq!(
+        i64::from_le_bytes(img[extb0..extb0 + 8].try_into().unwrap()),
+        178,
+        "the fixture's file.txt extattr area starts at fragment 178"
+    );
+    img[extb0..extb0 + 8].copy_from_slice(&value.to_le_bytes());
+    img
+}
+
+/// An inode that declares an attribute area its pointers cannot deliver is
+/// damaged. Reporting it as "no attributes" would be a negative finding the
+/// image does not support (ADR-0020), so it is an error naming both lengths.
+#[test]
+fn an_unreadable_attribute_area_is_an_error_not_an_empty_list() {
+    for (what, extb0) in [
+        ("overflowing fragment address", i64::MAX),
+        ("fragment past the end of the image", 1 << 40),
+    ] {
+        let img = with_extb0(extb0);
+        let sb = Superblock::parse(&img[SBLOCK_UFS2..]).expect("superblock");
+        let err = list_xattrs(&img, &sb, FILE_INO)
+            .expect_err(&format!("{what}: must not read as 'no attributes'"));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("4128"),
+            "{what}: names the declared length: {msg}"
+        );
+    }
+}

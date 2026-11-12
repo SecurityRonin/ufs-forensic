@@ -224,3 +224,35 @@ pub fn parse_area(area: &[u8]) -> Vec<Xattr> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_area;
+
+    /// `parse_area` ends the walk at a record whose length cannot be right
+    /// (documented: no terminator, so there is nowhere safe to resume).
+    #[test]
+    fn parse_area_stops_at_an_impossible_record_length() {
+        // A well-formed 16-byte user record: ea_length 16, ns 1, padlen 0,
+        // namelen 1 ("a"), base (8 + 1 + 7) & !7 = 16, so an empty value.
+        let mut good = vec![0u8; 16];
+        good[0] = 16;
+        good[4] = 1;
+        good[6] = 1;
+        good[7] = b'a';
+        assert_eq!(parse_area(&good).len(), 1);
+        // ea_length below the 8-byte minimum.
+        let mut short = good.clone();
+        short[0] = 4;
+        assert!(parse_area(&short).is_empty());
+        // ea_length past the end of the area.
+        let mut over = good.clone();
+        over[0] = 200;
+        assert!(parse_area(&over).is_empty());
+        // A header claiming more than its record holds: namelen 40 makes the base
+        // 48, larger than ea_length 16.
+        let mut big_name = good;
+        big_name[6] = 40;
+        assert!(parse_area(&big_name).is_empty());
+    }
+}
