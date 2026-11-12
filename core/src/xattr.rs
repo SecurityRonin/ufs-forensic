@@ -141,6 +141,9 @@ impl Xattr {
 ///
 /// Propagates [`read_inode`]'s errors — a corrupt superblock geometry or an
 /// out-of-range inode number is surfaced rather than read as "no attributes".
+/// [`UfsError::Truncated`] when the inode declares an area (`di_extsize`) that
+/// its `di_extb` pointers cannot deliver in full: a damaged area is not an
+/// empty one.
 pub fn list_xattrs(partition: &[u8], sb: &Superblock, ino: u64) -> Result<Vec<Xattr>, UfsError> {
     let inode = read_inode(partition, sb, ino)?;
     if inode.version == UfsVersion::Ufs1 || inode.extsize == 0 {
@@ -148,7 +151,7 @@ pub fn list_xattrs(partition: &[u8], sb: &Superblock, ino: u64) -> Result<Vec<Xa
     }
     let fsize = usize::try_from(sb.fsize.max(0)).unwrap_or(0);
     if fsize == 0 {
-        return Ok(Vec::new());
+        return Ok(Vec::new()); // cov:unreachable: read_inode (above) refuses fs_fsize <= 0, so fsize is positive here
     }
 
     // Both di_extb pointers are walked: the area may span two fragment runs,
@@ -160,7 +163,7 @@ pub fn list_xattrs(partition: &[u8], sb: &Superblock, ino: u64) -> Result<Vec<Xa
             continue;
         }
         let Ok(start) = usize::try_from(blk) else {
-            continue;
+            continue; // cov:unreachable: blk > 0 here, and a positive i64 fits usize on the 64-bit targets this crate supports
         };
         let Some(byte) = start.checked_mul(fsize) else {
             continue;
@@ -172,6 +175,13 @@ pub fn list_xattrs(partition: &[u8], sb: &Superblock, ino: u64) -> Result<Vec<Xa
             continue;
         }
         area.extend_from_slice(&partition[byte..end]);
+    }
+    if area.len() < want {
+        return Err(UfsError::Truncated {
+            structure: "inode extended-attribute area (di_extsize via di_extb)",
+            need: want,
+            have: area.len(),
+        });
     }
 
     Ok(parse_area(&area))
@@ -190,7 +200,7 @@ pub fn parse_area(area: &[u8]) -> Vec<Xattr> {
     let mut off = 0usize;
     while off + NAME_OFF <= area.len() && out.len() < MAX_RECORDS {
         let Some(hdr) = area.get(off..off + NAME_OFF) else {
-            break;
+            break; // cov:unreachable: the loop condition guarantees off + NAME_OFF <= area.len()
         };
         let ea_length = u32::from_le_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]) as usize;
         let namespace = UfsNamespace::from_byte(hdr[4]);
@@ -212,7 +222,7 @@ pub fn parse_area(area: &[u8]) -> Vec<Xattr> {
             area.get(off + NAME_OFF..name_end),
             area.get(content_start..content_start + content_len),
         ) else {
-            break;
+            break; // cov:unreachable: name_end <= off + base and the value ends at off + ea_length - contentpadlen, both <= off + ea_length <= area.len() (checked above)
         };
 
         out.push(Xattr {
